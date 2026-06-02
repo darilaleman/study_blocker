@@ -36,6 +36,7 @@ class Sm2Algorithm {
       'interval': nextInterval,
       'repetitions': nextRepetitions,
       'easeFactor': nextEaseFactor,
+      'ease_factor': nextEaseFactor,
       'nextReview': DateTime.now().add(Duration(days: nextInterval)),
     };
   }

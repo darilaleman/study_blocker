@@ -82,7 +82,9 @@ class QuestionRepositoryImpl implements QuestionRepository {
       );
 
       final int nextInterval = sm2Result['interval'] as int;
-      final double nextEaseFactor = sm2Result['ease_factor'] as double;
+      final double nextEaseFactor =
+          (sm2Result['ease_factor'] ?? sm2Result['easeFactor']) as double;
+      final int nextRepetitions = sm2Result['repetitions'] as int;
 
       // 3. Calcular fecha exacta de revisión basándonos en el nuevo intervalo obtenido
       // Si nextInterval es 0 (o el algoritmo estipula revisión inmediata corta) aplicamos 1 hora, de lo contrario sumamos días.
@@ -90,13 +92,13 @@ class QuestionRepositoryImpl implements QuestionRepository {
           ? now.add(const Duration(hours: 1))
           : now.add(Duration(days: nextInterval));
 
-      // 4. Persistir métricas actualizadas en SQLite (incluyendo el nuevo conteo de repeticiones)
-      // Nota: Recuerda agregar el parámetro de repeticiones en la firma de tu data source si no existía.
+      // 4. Persistir métricas actualizadas en SQLite.
       await localDataSource.updateQuestionReviewData(
         questionId: question.id!,
         nextReview: nextReviewDate.toIso8601String(),
         interval: nextInterval,
         easeFactor: nextEaseFactor,
+        repetitions: nextRepetitions,
       );
 
       return Right(isCorrect);

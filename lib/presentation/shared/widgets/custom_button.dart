@@ -76,7 +76,7 @@ class CustomButton extends StatelessWidget {
           ),
           side: BorderSide(
             color: isDisabled
-                ? theme.disabledColor.withOpacity(0.3)
+                ? theme.disabledColor.withValues(alpha: 0.3)
                 : theme.colorScheme.primary,
             width: 1.5,
           ),
@@ -96,7 +96,9 @@ class CustomButton extends StatelessWidget {
           horizontal: 24,
         ),
         backgroundColor: theme.colorScheme.primary,
-        disabledBackgroundColor: theme.colorScheme.onSurface.withOpacity(0.12),
+        disabledBackgroundColor: theme.colorScheme.onSurface.withValues(
+          alpha: 0.12,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: buttonContent,

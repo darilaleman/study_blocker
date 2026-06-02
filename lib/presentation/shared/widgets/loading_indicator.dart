@@ -42,7 +42,7 @@ class LoadingIndicator extends StatelessWidget {
     if (isFullScreen) {
       return Scaffold(
         // Corregido: .withValues cambiado por .withOpacity para estabilidad en producción
-        backgroundColor: theme.colorScheme.surface.withOpacity(0.85),
+        backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.85),
         body: indicatorBody,
       );
     }

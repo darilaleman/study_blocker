@@ -14,6 +14,7 @@ abstract class QuestionLocalDataSource {
     required String nextReview,
     required int interval,
     required double easeFactor,
+    required int repetitions,
   });
   Future<void> insertStudyLog(
     int questionId,
@@ -90,6 +91,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     required String nextReview,
     required int interval,
     required double easeFactor,
+    required int repetitions,
   }) async {
     try {
       final db = await appDatabase.database;
@@ -101,6 +103,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
           'next_review': nextReview,
           'interval': interval,
           'ease_factor': easeFactor,
+          'repetitions': repetitions,
         },
         where: 'id = ?',
         whereArgs: [questionId],

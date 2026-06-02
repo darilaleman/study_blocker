@@ -85,13 +85,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-              ? theme.colorScheme.primaryContainer.withOpacity(0.12)
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.12)
               : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant.withOpacity(0.5),
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
             width: isSelected ? 2 : 1,
           ),
         ),

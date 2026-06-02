@@ -46,11 +46,14 @@ class QuestionModel extends Question {
 
   /// Construye el Modelo a partir de un Map proveniente de la base de datos.
   factory QuestionModel.fromMap(Map<String, dynamic> map) {
-    final optionsRaw = map['options'] as String;
-    final List<dynamic> optionsDecoded = jsonDecode(optionsRaw);
-    final List<String> optionsList = optionsDecoded
-        .map((e) => e.toString())
-        .toList();
+    final dynamic optionsRaw = map['options'];
+    final List<String> optionsList = optionsRaw is String
+        ? (jsonDecode(optionsRaw) as List<dynamic>)
+              .map((e) => e.toString())
+              .toList()
+        : optionsRaw is List
+        ? optionsRaw.map((e) => e.toString()).toList()
+        : const <String>[];
 
     return QuestionModel(
       id: map['id'] as int?,
@@ -61,9 +64,7 @@ class QuestionModel extends Question {
       nextReview: DateTime.parse(map['next_review'] as String),
       interval: map['interval'] as int,
       easeFactor: (map['ease_factor'] as num).toDouble(),
-      repetitions:
-          map['repetitions'] as int? ??
-          0, // <-- Extrae el valor de la BD de forma segura
+      repetitions: map['repetitions'] as int? ?? 0,
     );
   }
 

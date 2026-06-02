@@ -137,8 +137,8 @@ class _PdfUploadScreenState extends State<PdfUploadScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: _selectedFileName != null
-                            ? theme.colorScheme.primaryContainer.withOpacity(
-                                0.1,
+                            ? theme.colorScheme.primaryContainer.withValues(
+                                alpha: 0.1,
                               )
                             : theme.colorScheme.surface,
                         borderRadius: BorderRadius.circular(16),

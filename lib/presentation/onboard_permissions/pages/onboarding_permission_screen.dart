@@ -13,8 +13,8 @@ class _OnboardingPermissionScreenState extends State<OnboardingPermissionScreen>
     with WidgetsBindingObserver {
   // Solución al Dead Code: Definimos las variables como propiedades de estado mutables.
   // Cuando conectes el BlocBuilder, estas variables vendrán directamente desde el 'state'.
-  bool _isSystemAlertWindowGranted = false;
-  bool _isUsageStatsGranted = false;
+  final bool _isSystemAlertWindowGranted = false;
+  final bool _isUsageStatsGranted = false;
 
   @override
   void initState() {
@@ -165,13 +165,13 @@ class _PermissionTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: isGranted
-              ? Colors.green.withOpacity(0.5)
+              ? Colors.green.withValues(alpha: 0.5)
               : theme.colorScheme.outlineVariant,
           width: isGranted ? 1.5 : 1,
         ),
       ),
       color: isGranted
-          ? Colors.green.withOpacity(0.05)
+          ? Colors.green.withValues(alpha: 0.05)
           : theme.colorScheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -182,8 +182,8 @@ class _PermissionTile extends StatelessWidget {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: isGranted
-                    ? Colors.green.withOpacity(0.1)
-                    : theme.colorScheme.primaryContainer.withOpacity(0.4),
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
                 shape: BoxShape.circle,
               ),
               child: Icon(

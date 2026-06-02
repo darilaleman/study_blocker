@@ -37,7 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
               Icons.bar_chart_rounded,
               color: AppConstants.accentColor,
             ),
-            onPressed: () => Navigator.of(context).pushNamed('/stats'),
+            onPressed: () =>
+                Navigator.of(context).pushNamed(AppConstants.routeStats),
           ),
         ],
       ),
@@ -154,7 +155,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () => Navigator.of(context).pushNamed('/quiz'),
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pushNamed(AppConstants.routeQuizOverlay),
                     icon: const Icon(Icons.school_rounded, color: Colors.white),
                     label: const Text(
                       'Estudiar Voluntariamente',

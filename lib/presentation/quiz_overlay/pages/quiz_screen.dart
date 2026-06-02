@@ -138,18 +138,18 @@ class _QuizScreenState extends State<QuizScreen> {
 
                           if (isSelected) {
                             tileColor = theme.colorScheme.primaryContainer
-                                .withOpacity(0.3);
+                                .withValues(alpha: 0.3);
                             borderColor = theme.colorScheme.primary;
                           }
 
                           if (_hasSubmitted) {
                             if (option == _correctAnswerText) {
-                              tileColor = Colors.green.withOpacity(0.2);
+                              tileColor = Colors.green.withValues(alpha: 0.2);
                               borderColor = Colors.green;
                             } else if (isSelected &&
                                 _isCorrectResult == false) {
                               tileColor = theme.colorScheme.errorContainer
-                                  .withOpacity(0.4);
+                                  .withValues(alpha: 0.4);
                               borderColor = theme.colorScheme.error;
                             }
                           }
