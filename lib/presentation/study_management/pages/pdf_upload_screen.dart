@@ -143,7 +143,7 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                     children: [
                       // SELECTOR DE ASIGNATURA EN LUGAR DE TEXTFIELD
                       DropdownButtonFormField<String>(
-                        value: _selectedSubjectId,
+                        initialValue: _selectedSubjectId,
                         decoration: const InputDecoration(
                           labelText: 'Selecciona una Asignatura Activa',
                           prefixIcon: Icon(
@@ -200,7 +200,7 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                             vertical: 16,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.05),
+                            color: Colors.grey.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
@@ -241,7 +241,9 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                           ),
                           decoration: BoxDecoration(
                             color: state.fileName != null
-                                ? theme.colorScheme.primary.withOpacity(0.1)
+                                ? theme.colorScheme.primary.withValues(
+                                    alpha: 0.1,
+                                  )
                                 : theme.colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(

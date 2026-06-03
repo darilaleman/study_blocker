@@ -140,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     value: isActive,
-                    activeColor: AppConstants.accentColor,
+                    activeThumbColor: AppConstants.accentColor,
                     onChanged: (bool value) async {
                       await _toggleSubjectActive(
                         subject['id'] as int,
@@ -260,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         trailing: Switch(
                           value: isActive,
-                          activeColor: AppConstants.accentColor,
+                          activeThumbColor: AppConstants.accentColor,
                           onChanged: (_) => _toggleSubjectActive(
                             subject['id'] as int,
                             isActive,

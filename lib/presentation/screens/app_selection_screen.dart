@@ -6,7 +6,7 @@ import '../bloc/app_selection/app_selection_event.dart';
 import '../bloc/app_selection/app_selection_state.dart';
 
 class AppSelectionScreen extends StatelessWidget {
-  const AppSelectionScreen({Key? key}) : super(key: key);
+  const AppSelectionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

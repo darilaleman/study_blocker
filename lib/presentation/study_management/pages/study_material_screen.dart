@@ -138,8 +138,8 @@ class _StudyMaterialScreenState extends State<StudyMaterialScreen> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: isCorrect
-                            ? Colors.green.withOpacity(0.08)
-                            : theme.colorScheme.surface.withOpacity(0.10),
+                            ? Colors.green.withValues(alpha: 0.08)
+                            : theme.colorScheme.surface.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: isCorrect
