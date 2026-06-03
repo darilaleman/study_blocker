@@ -1,5 +1,4 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:study_blocker/core/errors/failures.dart';
 import 'package:study_blocker/data/datasources/local/app_config_local_datasource.dart';
 import 'package:study_blocker/domain/entities/user.dart';
 import 'package:study_blocker/presentation/auth/bloc/auth_event.dart';
