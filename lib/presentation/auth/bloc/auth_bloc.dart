@@ -1,15 +1,14 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:study_blocker/core/errors/failures.dart';
+import 'package:study_blocker/data/datasources/local/app_config_local_datasource.dart';
 import 'package:study_blocker/domain/entities/user.dart';
 import 'package:study_blocker/presentation/auth/bloc/auth_event.dart';
 import 'package:study_blocker/presentation/auth/bloc/auth_state.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  // Nota: Cuando conectes inyección de dependencias (GetIt),
-  // descomenta y pasa tus Casos de Uso reales aquí.
-  // final CheckAuthStatus checkAuthStatus;
-  // final LoginUseCase loginUseCase;
+  final AppConfigLocalDataSource localConfig;
 
-  AuthBloc() : super(AuthInitial()) {
+  AuthBloc({required this.localConfig}) : super(AuthInitial()) {
     on<AppStarted>(_onAppStarted);
     on<LoginRequested>(_onLoginRequested);
     on<LogoutRequested>(_onLogoutRequested);
@@ -18,11 +17,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   Future<void> _onAppStarted(AppStarted event, Emitter<AuthState> emit) async {
     emit(AuthLoading());
     try {
-      // Simulación de verificación de persistencia local (SharedPreferences/SecureStorage)
-      await Future.delayed(const Duration(seconds: 1));
+      final isLoggedIn = await localConfig.isUserLoggedIn();
+      if (!isLoggedIn) {
+        emit(Unauthenticated());
+        return;
+      }
 
-      // Por defecto obligamos a ir a login. Cambiar por lógica de sesión persistente.
-      emit(Unauthenticated());
+      final user = User(
+        id: 1,
+        name: 'Estudiante enfocado',
+        email: 'usuario@ejemplo.com',
+        currentStreak: 0,
+        isVip: await localConfig.isVipUser(),
+        lastStudyDate: DateTime.now(),
+      );
+
+      emit(Authenticated(user: user));
     } catch (e) {
       emit(AuthError(message: 'Error al verificar el estado de la sesión: $e'));
     }
@@ -34,7 +44,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(AuthLoading());
     try {
-      // Validación estricta en presentación antes de llamadas de red/infraestructura
       if (event.email.isEmpty || !event.email.contains('@')) {
         emit(
           const AuthError(
@@ -52,20 +61,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      // Simulación de retardo de red/asíncrono
       await Future.delayed(const Duration(milliseconds: 1200));
+      await localConfig.setIsUserLoggedIn(true);
 
-      // Creación de la Entidad de Dominio User (acorde a tu archivo user.dart)
       final user = User(
         id: 1,
-        name: "Estudiante enfocado",
+        name: 'Estudiante enfocado',
         email: event.email,
         currentStreak: 0,
-        isVip: false,
+        isVip: await localConfig.isVipUser(),
         lastStudyDate: DateTime.now(),
       );
 
-      // ¡CRÍTICO! Emitir el estado de éxito para desbloquear la UI
       emit(Authenticated(user: user));
     } catch (e) {
       emit(AuthError(message: 'Error al iniciar sesión: ${e.toString()}'));
@@ -78,8 +85,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(AuthLoading());
     try {
-      // Simulación de limpieza de tokens/DB
-      await Future.delayed(const Duration(milliseconds: 500));
+      await localConfig.setIsUserLoggedIn(false);
       emit(Unauthenticated());
     } catch (e) {
       emit(AuthError(message: 'Error al cerrar sesión: $e'));

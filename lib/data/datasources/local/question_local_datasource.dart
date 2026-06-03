@@ -23,6 +23,20 @@ abstract class QuestionLocalDataSource {
   );
   Future<int> getCurrentStreak();
   Future<int> getTodayAnsweredCount();
+
+  Future<List<Map<String, dynamic>>> getAllSubjects();
+  Future<int> createSubject({required String name, required bool isActive});
+  Future<void> updateSubjectActive(int id, bool isActive);
+  Future<List<QuestionModel>> getAllQuestions();
+  Future<List<QuestionModel>> getQuestionsBySubject(String subject);
+  Future<int> countActiveSubjects();
+  Future<int> countPdfsForSubject(String subjectName);
+  Future<void> saveSubjectAndPdf({
+    required String subjectName,
+    required DateTime examDate,
+    required String filePath,
+    required int pageCount,
+  });
 }
 
 /// IMPLEMENTACIÓN CONCRETA
@@ -180,6 +194,176 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     } catch (e) {
       throw DatabaseException(
         message: 'Error al calcular la racha de estudio: $e',
+      );
+    }
+  }
+
+  @override
+  Future<int> countActiveSubjects() async {
+    try {
+      final db = await appDatabase.database;
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as total FROM table_subjects WHERE is_active = 1',
+      );
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al contar las asignaturas activas: $e',
+      );
+    }
+  }
+
+  @override
+  Future<int> countPdfsForSubject(String subjectName) async {
+    try {
+      final db = await appDatabase.database;
+      final result = await db.rawQuery(
+        '''
+        SELECT COUNT(pdf.id) as total
+        FROM table_pdf_documents pdf
+        INNER JOIN table_subjects subj ON subj.id = pdf.subject_id
+        WHERE subj.name = ?
+        ''',
+        [subjectName],
+      );
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al contar los PDFs de la asignatura "$subjectName": $e',
+      );
+    }
+  }
+
+  @override
+  Future<void> saveSubjectAndPdf({
+    required String subjectName,
+    required DateTime examDate,
+    required String filePath,
+    required int pageCount,
+  }) async {
+    try {
+      final db = await appDatabase.database;
+      await db.transaction((txn) async {
+        final existingSubjects = await txn.query(
+          'table_subjects',
+          where: 'name = ?',
+          whereArgs: [subjectName],
+          limit: 1,
+        );
+
+        int subjectId;
+        final createdAt = DateTime.now().toIso8601String();
+
+        if (existingSubjects.isNotEmpty) {
+          final existing = existingSubjects.first;
+          subjectId = existing['id'] as int;
+
+          await txn.update(
+            'table_subjects',
+            {'exam_date': examDate.toIso8601String(), 'is_active': 1},
+            where: 'id = ?',
+            whereArgs: [subjectId],
+          );
+        } else {
+          subjectId = await txn.insert('table_subjects', {
+            'name': subjectName,
+            'exam_date': examDate.toIso8601String(),
+            'created_at': createdAt,
+            'is_active': 1,
+          });
+        }
+
+        await txn.insert('table_pdf_documents', {
+          'subject_id': subjectId,
+          'file_path': filePath,
+          'page_count': pageCount,
+          'uploaded_at': createdAt,
+        });
+      });
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al guardar los datos del PDF/documento: $e',
+      );
+    }
+  }
+
+  @override
+  Future<List<QuestionModel>> getAllQuestions() async {
+    try {
+      final db = await appDatabase.database;
+      final rows = await db.query(
+        'table_questions',
+        orderBy: 'next_review ASC',
+      );
+      return rows.map(QuestionModel.fromMap).toList();
+    } catch (e) {
+      throw DatabaseException(message: 'Error al recuperar las preguntas: $e');
+    }
+  }
+
+  @override
+  Future<List<QuestionModel>> getQuestionsBySubject(String subject) async {
+    try {
+      final db = await appDatabase.database;
+      final rows = await db.query(
+        'table_questions',
+        where: 'subject = ?',
+        whereArgs: [subject],
+        orderBy: 'next_review ASC',
+      );
+      return rows.map(QuestionModel.fromMap).toList();
+    } catch (e) {
+      throw DatabaseException(
+        message:
+            'Error al recuperar las preguntas de la asignatura "$subject": $e',
+      );
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllSubjects() async {
+    try {
+      final db = await appDatabase.database;
+      return await db.query('table_subjects', orderBy: 'created_at DESC');
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al recuperar las asignaturas: $e',
+      );
+    }
+  }
+
+  @override
+  Future<int> createSubject({
+    required String name,
+    required bool isActive,
+  }) async {
+    try {
+      final db = await appDatabase.database;
+      final createdAt = DateTime.now().toIso8601String();
+      return await db.insert('table_subjects', {
+        'name': name,
+        'exam_date': createdAt,
+        'created_at': createdAt,
+        'is_active': isActive ? 1 : 0,
+      });
+    } catch (e) {
+      throw DatabaseException(message: 'Error al crear la asignatura: $e');
+    }
+  }
+
+  @override
+  Future<void> updateSubjectActive(int id, bool isActive) async {
+    try {
+      final db = await appDatabase.database;
+      await db.update(
+        'table_subjects',
+        {'is_active': isActive ? 1 : 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al actualizar el estado de la asignatura: $e',
       );
     }
   }

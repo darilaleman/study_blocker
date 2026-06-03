@@ -31,7 +31,7 @@ class ScreenTimeDeviceDataSourceImpl implements ScreenTimeDeviceDataSource {
   @override
   Future<bool> checkSystemPermissions() async {
     try {
-      // TODO: Implementar lógica real del plugin de permisos.
+      // Placeholder: aquí se integraría el plugin nativo para verificar permisos.
       // Ejemplo simulado:
       // final hasPermission = await _screenTimePlugin.checkPermissions();
       // return hasPermission;
@@ -94,7 +94,8 @@ class ScreenTimeDeviceDataSourceImpl implements ScreenTimeDeviceDataSource {
         'SISTEMA NATIVO: Desbloqueo temporal concedido por $durationMinutes minutos.',
       );
 
-      // TODO: Configurar un timer o alarma nativa para que re-bloquee al expirar el tiempo
+      // Placeholder: aquí se podría registrar un timer nativo para reactivar
+      // el bloqueo cuando expire el tiempo de liberación temporal.
     } catch (e) {
       throw DevicePermissionException(
         message: 'No se pudo procesar el desbloqueo temporal: ${e.toString()}',

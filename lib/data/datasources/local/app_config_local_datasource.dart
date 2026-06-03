@@ -27,6 +27,12 @@ abstract class AppConfigLocalDataSource {
   /// Verifica si el usuario tiene el estado VIP activo de forma local.
   Future<bool> isVipUser();
 
+  /// Guarda si existe una sesión activa del usuario.
+  Future<void> setIsUserLoggedIn(bool isLoggedIn);
+
+  /// Verifica si el usuario está autenticado en la app.
+  Future<bool> isUserLoggedIn();
+
   /// Limpia todas las configuraciones (útil para un cierre de sesión o reset de la app).
   Future<void> clearConfig();
 }
@@ -40,6 +46,7 @@ class AppConfigLocalDataSourceImpl implements AppConfigLocalDataSource {
   static const _keyExamDate = 'PREF_EXAM_DATE';
   static const _keyBlockedApps = 'PREF_BLOCKED_APPS_LIST';
   static const _keyIsVip = 'PREF_IS_VIP_USER';
+  static const _keyIsLoggedIn = 'PREF_IS_USER_LOGGED_IN';
 
   AppConfigLocalDataSourceImpl(this._sharedPreferences);
 
@@ -109,6 +116,22 @@ class AppConfigLocalDataSourceImpl implements AppConfigLocalDataSource {
   @override
   Future<bool> isVipUser() async {
     return _sharedPreferences.getBool(_keyIsVip) ?? false;
+  }
+
+  @override
+  Future<void> setIsUserLoggedIn(bool isLoggedIn) async {
+    try {
+      await _sharedPreferences.setBool(_keyIsLoggedIn, isLoggedIn);
+    } catch (e) {
+      throw const CacheException(
+        message: 'No se pudo actualizar el estado de sesión del usuario.',
+      );
+    }
+  }
+
+  @override
+  Future<bool> isUserLoggedIn() async {
+    return _sharedPreferences.getBool(_keyIsLoggedIn) ?? false;
   }
 
   @override

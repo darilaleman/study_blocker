@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:study_blocker/core/errors/exceptions.dart';
 import 'package:study_blocker/data/models/question_model.dart';
 
@@ -18,52 +17,89 @@ class AiQuizRemoteDataSourceImpl implements AiQuizRemoteDataSource {
     required String subject,
   }) async {
     try {
-      // Simulación de respuesta JSON de la Inteligencia Artificial
-      const mockResponseBody = '''
-      [
-        {
-          "question": "¿Cuál es la principal ventaja de utilizar Clean Architecture en un proyecto de Flutter?",
-          "options": [
-            "Aumenta la velocidad de renderizado de los widgets",
-            "Permite desacoplar la lógica de negocio de los detalles de infraestructura",
-            "Reduce automáticamente el tamaño del APK final",
-            "Elimina la necesidad de utilizar gestores de estado"
-          ],
-          "correct_answer": "Permite desacoplar la lógica de negocio de los detalles de infraestructura"
-        },
-        {
-          "question": "¿Qué capa de Clean Architecture debe permanecer completamente pura e independiente de los frameworks?",
-          "options": [
-            "Capa de Presentación",
-            "Capa de Datos",
-            "Capa de Dominio",
-            "Capa de Dispositivo"
-          ],
-          "correct_answer": "Capa de Dominio"
-        }
-      ]
-      ''';
+      final cleanedText = pdfText.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (cleanedText.isEmpty) {
+        throw AiGenerationException(
+          message: 'El texto del PDF no contiene contenido válido.',
+        );
+      }
 
-      final List<dynamic> decodedJson = jsonDecode(mockResponseBody);
+      final sentences = _extractSentences(
+        cleanedText,
+      ).where((sentence) => sentence.length >= 40).toList();
 
-      return decodedJson.map((map) {
-        final extendedMap = Map<String, dynamic>.from(map);
-        extendedMap['subject'] = subject;
+      if (sentences.isEmpty) {
+        throw AiGenerationException(
+          message:
+              'No se pudieron generar preguntas porque el texto es muy corto.',
+        );
+      }
 
-        // Metadatos iniciales para el algoritmo SM2 en la creación de la tarjeta
-        extendedMap['next_review'] = DateTime.now().toIso8601String();
-        extendedMap['interval'] = 0;
-        extendedMap['ease_factor'] = 2.5;
-        extendedMap['repetitions'] =
-            0; // <-- CORRECCIÓN: Nace con 0 repeticiones consecutivas
+      final uniqueSentences = sentences.toSet().toList();
+      final questions = <QuestionModel>[];
+      final candidates = uniqueSentences.take(6).toList();
 
-        return QuestionModel.fromMap(extendedMap);
-      }).toList();
+      for (
+        var index = 0;
+        index < candidates.length && questions.length < 3;
+        index++
+      ) {
+        final correctSentence = candidates[index];
+        final answerOptions = _buildOptions(correctSentence, candidates);
+
+        questions.add(
+          QuestionModel(
+            question:
+                '¿Cuál de las siguientes oraciones aparece en el texto extraído del PDF?',
+            options: answerOptions,
+            correctAnswer: correctSentence,
+            subject: subject,
+            nextReview: DateTime.now(),
+            interval: 0,
+            easeFactor: 2.5,
+            repetitions: 0,
+          ),
+        );
+      }
+
+      if (questions.isEmpty) {
+        throw AiGenerationException(
+          message:
+              'No se pudieron generar preguntas a partir del texto proporcionado.',
+        );
+      }
+
+      return questions;
     } catch (e) {
+      if (e is AiGenerationException) rethrow;
       throw AiGenerationException(
         message:
-            'Error al decodificar o estructurar el quiz de la IA: ${e.toString()}',
+            'Error al generar preguntas a partir del texto: ${e.toString()}',
       );
     }
+  }
+
+  List<String> _extractSentences(String text) {
+    final rawSentences = text.split(RegExp(r'(?<=[.!?])\s+'));
+    return rawSentences.map((sentence) => sentence.trim()).toList();
+  }
+
+  List<String> _buildOptions(String correctSentence, List<String> candidates) {
+    final options = <String>[correctSentence];
+    for (final sentence in candidates) {
+      if (options.length >= 4) break;
+      if (sentence == correctSentence) continue;
+      final normalized = sentence.length > 120
+          ? '${sentence.substring(0, 117)}...'
+          : sentence;
+      options.add(normalized);
+    }
+
+    while (options.length < 4) {
+      options.add('No estoy seguro, revisar el material de estudio.');
+    }
+
+    options.shuffle();
+    return options;
   }
 }

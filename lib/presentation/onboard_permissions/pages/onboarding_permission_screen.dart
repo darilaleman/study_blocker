@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-// TODO: Importa aquí el Bloc de permisos de tu capa de presentación cuando esté listo.
+import 'package:study_blocker/data/datasources/local/app_config_local_datasource.dart';
+import 'package:study_blocker/domain/repositories/app_block_repository.dart';
+import 'package:study_blocker/injection_container.dart' as di;
 
 class OnboardingPermissionScreen extends StatefulWidget {
   const OnboardingPermissionScreen({super.key});
@@ -11,10 +13,13 @@ class OnboardingPermissionScreen extends StatefulWidget {
 
 class _OnboardingPermissionScreenState extends State<OnboardingPermissionScreen>
     with WidgetsBindingObserver {
-  // Solución al Dead Code: Definimos las variables como propiedades de estado mutables.
-  // Cuando conectes el BlocBuilder, estas variables vendrán directamente desde el 'state'.
-  final bool _isSystemAlertWindowGranted = false;
-  final bool _isUsageStatsGranted = false;
+  bool _isSystemAlertWindowGranted = false;
+  bool _isUsageStatsGranted = false;
+  bool _isCheckingPermissions = false;
+
+  final AppBlockRepository _appBlockRepository = di.sl<AppBlockRepository>();
+  final AppConfigLocalDataSource _localConfig = di
+      .sl<AppConfigLocalDataSource>();
 
   @override
   void initState() {
@@ -36,19 +41,64 @@ class _OnboardingPermissionScreenState extends State<OnboardingPermissionScreen>
     }
   }
 
-  void _checkCurrentPermissions() {
-    // TODO: Disparar evento al PermissionsBloc encargado de consultar el repositorio nativo.
+  Future<void> _checkCurrentPermissions() async {
+    setState(() {
+      _isCheckingPermissions = true;
+    });
+
+    final result = await _appBlockRepository.checkAndSyncPermissions();
+
+    result.fold(
+      (failure) {
+        setState(() {
+          _isSystemAlertWindowGranted = false;
+          _isUsageStatsGranted = false;
+          _isCheckingPermissions = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'No se pudieron verificar los permisos: ${failure.message}',
+            ),
+          ),
+        );
+      },
+      (hasPermissions) {
+        setState(() {
+          _isSystemAlertWindowGranted = hasPermissions;
+          _isUsageStatsGranted = hasPermissions;
+          _isCheckingPermissions = false;
+        });
+      },
+    );
   }
 
   void _requestSystemAlertWindow() {
-    // TODO: Delegar la apertura de la configuración nativa al Bloc
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Abre la configuración del sistema y activa Superposición de Pantalla para Study Blocker.',
+        ),
+      ),
+    );
+    _checkCurrentPermissions();
   }
 
   void _requestUsageStats() {
-    // TODO: Delegar la apertura de la configuración nativa al Bloc
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Abre la configuración del sistema y activa Estadísticas de Uso para Study Blocker.',
+        ),
+      ),
+    );
+    _checkCurrentPermissions();
   }
 
-  void _navigateToNextScreen() {
+  Future<void> _navigateToNextScreen() async {
+    await _localConfig.setOnboardingCompleted(true);
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed('/home');
   }
 
@@ -100,7 +150,9 @@ class _OnboardingPermissionScreenState extends State<OnboardingPermissionScreen>
                 description:
                     'Permite mostrar el cuestionario interactivo de bloqueo por encima de las apps restringidas.',
                 isGranted: _isSystemAlertWindowGranted,
-                onPressed: _requestSystemAlertWindow,
+                onPressed: _isCheckingPermissions
+                    ? () {}
+                    : _requestSystemAlertWindow,
               ),
               const SizedBox(height: 12),
 
@@ -111,14 +163,16 @@ class _OnboardingPermissionScreenState extends State<OnboardingPermissionScreen>
                 description:
                     'Permite al servicio en segundo plano detectar qué aplicación se está abriendo en tiempo real.',
                 isGranted: _isUsageStatsGranted,
-                onPressed: _requestUsageStats,
+                onPressed: _isCheckingPermissions ? () {} : _requestUsageStats,
               ),
 
               const Spacer(),
 
               // BOTÓN DE ACCIÓN PRINCIPAL CONTROLADO POR EL ESTADO NATIVO
               FilledButton(
-                onPressed: allPermissionsGranted ? _navigateToNextScreen : null,
+                onPressed: allPermissionsGranted && !_isCheckingPermissions
+                    ? _navigateToNextScreen
+                    : null,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -126,7 +180,9 @@ class _OnboardingPermissionScreenState extends State<OnboardingPermissionScreen>
                   ),
                 ),
                 child: Text(
-                  allPermissionsGranted
+                  _isCheckingPermissions
+                      ? 'Verificando permisos...'
+                      : allPermissionsGranted
                       ? 'Comenzar a Enfocarme'
                       : 'Concede los permisos para continuar',
                   style: const TextStyle(fontWeight: FontWeight.bold),

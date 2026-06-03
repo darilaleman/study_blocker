@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:study_blocker/data/datasources/local/question_local_datasource.dart';
 import 'package:study_blocker/domain/entities/question.dart';
+import 'package:study_blocker/injection_container.dart';
 import 'package:study_blocker/presentation/quiz_overlay/widgets/question_card.dart';
 
 class StudyMaterialScreen extends StatefulWidget {
@@ -9,74 +11,50 @@ class StudyMaterialScreen extends StatefulWidget {
   State<StudyMaterialScreen> createState() => _StudyMaterialScreenState();
 }
 
-class _StudyMaterialScreenState extends State<StudyMaterialScreen>
-    with SingleTickerProviderStateMixin {
-  TabController? _tabController;
-
-  final List<String> _subjects = [
-    'Todos',
-    'Clean Architecture',
-    'Sistemas Operativos',
-    'Estructuras de Datos',
-  ];
-
-  late final List<Question> _mockQuestions;
+class _StudyMaterialScreenState extends State<StudyMaterialScreen> {
+  final QuestionLocalDataSource _questionLocalDataSource = sl();
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _subjects = [];
+  List<Question> _questions = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _subjects.length, vsync: this);
-
-    // Corregido: Agregados todos los campos requeridos por la entidad del dominio
-    _mockQuestions = [
-      Question(
-        id: 1,
-        subject: 'Clean Architecture',
-        question:
-            '¿Cuál es la responsabilidad principal de la capa de Dominio (Domain Layer)?',
-        options: [
-          'Gestionar las conexiones de red y APIs externas.', // Corregido el "and" por "y"
-          'Alojar las entidades y las reglas puras de negocio de forma independiente.',
-          'Pintar los widgets y reaccionar a las interacciones del usuario.',
-          'Administrar las migraciones de la base de datos local SQLite.',
-        ],
-        correctAnswer:
-            'Alojar las entidades y las reglas puras de negocio de forma independiente.',
-        nextReview: DateTime.now(),
-        interval: 0,
-        easeFactor: 2.5,
-        repetitions: 0,
-      ),
-      Question(
-        id: 2,
-        subject: 'Sistemas Operativos',
-        question:
-            '¿Qué problema resuelve principalmente el algoritmo de planificación Round Robin?',
-        options: [
-          'La fragmentación interna de la memoria RAM estática.',
-          'La asignación equitativa del tiempo de CPU evitando la hambruna de procesos.',
-          'El cifrado asimétrico de los bloques de disco en sistemas EXT4.',
-          'La sincronización de hilos mediante semáforos de exclusión mutua.',
-        ],
-        correctAnswer:
-            'La asignación equitativa del tiempo de CPU evitando la hambruna de procesos.',
-        nextReview: DateTime.now().add(const Duration(days: 4)),
-        interval: 4,
-        easeFactor: 2.6,
-        repetitions: 2,
-      ),
-    ];
+    _loadStudyData();
   }
 
-  @override
-  void dispose() {
-    _tabController?.dispose();
-    super.dispose();
+  Future<void> _loadStudyData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final subjects = await _questionLocalDataSource.getAllSubjects();
+      final questions = await _questionLocalDataSource.getAllQuestions();
+
+      setState(() {
+        _subjects = subjects;
+        _questions = questions;
+      });
+    } catch (_) {
+      setState(() {
+        _subjects = [];
+        _questions = [];
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  List<String> get _tabs {
+    return ['Todos', ..._subjects.map((subject) => subject['name'] as String)];
   }
 
   List<Question> _getFilteredQuestions(String subject) {
-    if (subject == 'Todos') return _mockQuestions;
-    return _mockQuestions.where((q) => q.subject == subject).toList();
+    if (subject == 'Todos') return _questions;
+    return _questions.where((q) => q.subject == subject).toList();
   }
 
   void _showQuestionDetailsBottomSheet(Question question) {
@@ -160,9 +138,8 @@ class _StudyMaterialScreenState extends State<StudyMaterialScreen>
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: isCorrect
-                            ? Colors.green.withValues(alpha: 0.08)
-                            : theme.colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.3),
+                            ? Colors.green.withOpacity(0.08)
+                            : theme.colorScheme.surface.withOpacity(0.10),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: isCorrect
@@ -208,45 +185,62 @@ class _StudyMaterialScreenState extends State<StudyMaterialScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         title: const Text(
           'Material de Estudio',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: _subjects.map((subject) => Tab(text: subject)).toList(),
-        ),
+        bottom: _isLoading || _tabs.isEmpty
+            ? null
+            : TabBar(
+                isScrollable: true,
+                tabs: _tabs.map((subject) => Tab(text: subject)).toList(),
+              ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: _subjects.map((subject) {
-          final questions = _getFilteredQuestions(subject);
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _tabs.isEmpty
+          ? const Center(
+              child: Text(
+                'No hay materias registradas. Añade un PDF desde el Dashboard.',
+                textAlign: TextAlign.center,
+              ),
+            )
+          : TabBarView(
+              children: _tabs.map((subject) {
+                final questions = _getFilteredQuestions(subject);
 
-          if (questions.isEmpty) {
-            return const Center(
-              child: Text('No hay preguntas generadas para esta categoría.'),
-            );
-          }
+                if (questions.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No hay preguntas generadas para esta categoría.',
+                    ),
+                  );
+                }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: questions.length,
-            itemBuilder: (context, index) {
-              final question = questions[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: QuestionCard(
-                  question: question,
-                  onTap: () => _showQuestionDetailsBottomSheet(question),
-                ),
-              );
-            },
-          );
-        }).toList(),
-      ),
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: questions.length,
+                  itemBuilder: (context, index) {
+                    final question = questions[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: QuestionCard(
+                        question: question,
+                        onTap: () => _showQuestionDetailsBottomSheet(question),
+                      ),
+                    );
+                  },
+                );
+              }).toList(),
+            ),
     );
+
+    if (_isLoading || _tabs.isEmpty) {
+      return scaffold;
+    }
+
+    return DefaultTabController(length: _tabs.length, child: scaffold);
   }
 }

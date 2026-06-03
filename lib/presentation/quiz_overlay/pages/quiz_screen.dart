@@ -71,8 +71,7 @@ class _QuizScreenState extends State<QuizScreen> {
               if (state.isCorrect) {
                 Future.delayed(const Duration(seconds: 2), () {
                   if (mounted) {
-                    // TODO: Implementar aquí el canal nativo para cerrar la ventana flotante (System Alert Window)
-                    // Navigator.of(context).pop();
+                    Navigator.of(context).maybePop();
                   }
                 });
               }

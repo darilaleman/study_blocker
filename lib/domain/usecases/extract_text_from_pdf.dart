@@ -1,16 +1,12 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
+import 'package:pdf_text/pdf_text.dart';
 import 'package:study_blocker/core/errors/failures.dart';
 import 'package:study_blocker/core/usecases/usecase.dart';
 
 /// Caso de Uso encargado de abrir un archivo PDF local mediante su ruta,
 /// extraer su contenido en texto plano y prepararlo para la IA.
 class ExtractTextFromPdf implements UseCase<String, ExtractTextFromPdfParams> {
-  // Nota: Si en el futuro decides crear un PdfRepository dedicado, lo inyectas aquí.
-  // Por ahora, como el fin último de extraer texto es generar preguntas,
-  // podemos usar el repositorio de preguntas si este implementa dicha extracción,
-  // o definir el contrato aquí mismo.
-
   const ExtractTextFromPdf();
 
   @override
@@ -24,22 +20,19 @@ class ExtractTextFromPdf implements UseCase<String, ExtractTextFromPdfParams> {
         );
       }
 
-      // TODO: Implementar la lectura real del PDF usando tu plugin preferido.
-      // Ejemplo simulado de flujo de extracción:
-      // final File file = File(params.pdfPath);
-      // final String extractedText = await PdfTextReader.readTxt(file.path);
+      final doc = await PDFDoc.fromPath(params.pdfPath);
+      final text = await doc.text;
 
-      print(
-        'SISTEMA LOCAL: Extrayendo texto del PDF en la ruta: ${params.pdfPath}',
-      );
-      await Future.delayed(
-        const Duration(seconds: 1),
-      ); // Simulación de lectura de disco
+      if (text.trim().isEmpty) {
+        return const Left(
+          CacheFailure(
+            message:
+                'No se pudo extraer texto del PDF. El archivo puede estar protegido o vacío.',
+          ),
+        );
+      }
 
-      const mockExtractedText =
-          'Este es el texto resumido extraído del archivo PDF de estudio sobre Clean Architecture y algoritmos.';
-
-      return const Right(mockExtractedText);
+      return Right(text);
     } catch (e) {
       return Left(
         CacheFailure(
@@ -53,8 +46,7 @@ class ExtractTextFromPdf implements UseCase<String, ExtractTextFromPdfParams> {
 
 /// Parámetros requeridos para poder ejecutar la extracción de texto.
 class ExtractTextFromPdfParams extends Equatable {
-  final String
-  pdfPath; // Ruta local del archivo en el dispositivo (ej: '/cache/documento.pdf')
+  final String pdfPath;
 
   const ExtractTextFromPdfParams({required this.pdfPath});
 

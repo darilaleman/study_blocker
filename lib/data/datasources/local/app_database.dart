@@ -35,10 +35,34 @@ class AppDatabase {
     const intType = 'INTEGER NOT NULL';
     const realType = 'REAL NOT NULL';
 
-    // 1. TABLA DE PREGUNTAS (Con la columna 'repetitions' añadida de forma nativa)
+    // 1. TABLA DE ASIGNATURAS (ACTUALIZADA)
+    await db.execute('''
+      CREATE TABLE table_subjects (
+        id $idType,
+        name $textType,
+        exam_date $textType,
+        created_at $textType,
+        is_active $intType DEFAULT 0 -- 0 = inactiva, 1 = activa
+      )
+    ''');
+
+    // 2. TABLA DE DOCUMENTOS PDF (NUEVA)
+    await db.execute('''
+      CREATE TABLE table_pdf_documents (
+        id $idType,
+        subject_id $intType,
+        file_path $textType,
+        page_count $intType,
+        uploaded_at $textType,
+        FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 3. TABLA DE PREGUNTAS (Añadido subject_id como llave foránea opcional)
     await db.execute('''
       CREATE TABLE table_questions (
         id $idType,
+        subject_id INTEGER, -- Puede ser nulo por retrocompatibilidad
         question $textType,
         options $textType,       
         correct_answer $textType,
@@ -46,11 +70,12 @@ class AppDatabase {
         next_review $textType,     
         interval $intType,         
         ease_factor $realType,
-        repetitions $intType      -- <-- CORRECCIÓN: Columna física mapeada en SQLite
+        repetitions $intType,
+        FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
       )
     ''');
 
-    // 2. TABLA DE HISTORIAL DE RESPUESTAS
+    // 4. TABLA DE HISTORIAL DE RESPUESTAS
     await db.execute('''
       CREATE TABLE table_study_logs (
         id $idType,

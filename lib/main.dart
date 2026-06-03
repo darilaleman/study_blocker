@@ -51,7 +51,8 @@ class StudyBlockerApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider<AuthBloc>(
-          create: (context) => AuthBloc()..add(AppStarted()),
+          create: (context) =>
+              AuthBloc(localConfig: di.sl())..add(AppStarted()),
         ),
         BlocProvider<DashboardBloc>(create: (_) => di.sl<DashboardBloc>()),
         BlocProvider<QuizBloc>(create: (_) => di.sl<QuizBloc>()),
