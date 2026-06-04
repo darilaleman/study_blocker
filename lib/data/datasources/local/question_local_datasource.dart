@@ -37,6 +37,10 @@ abstract class QuestionLocalDataSource {
     required String filePath,
     required int pageCount,
   });
+
+  // Métodos nuevos para el bloqueo de aplicaciones
+  Future<void> saveBlockedApps(int subjectId, List<String> packageNames);
+  Future<List<String>> getBlockedAppsForSubject(int subjectId);
 }
 
 /// IMPLEMENTACIÓN CONCRETA
@@ -45,7 +49,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
 
   QuestionLocalDataSourceImpl({required this.appDatabase});
 
-  @override // Añadido para seguir las buenas prácticas
+  @override
   Future<void> insertQuestions(List<QuestionModel> questions) async {
     try {
       final db = await appDatabase.database;
@@ -63,13 +67,12 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     }
   }
 
-  @override // Añadido para seguir las buenas prácticas
+  @override
   Future<QuestionModel> getRandomPendingQuestion() async {
     try {
       final db = await appDatabase.database;
       final nowStr = DateTime.now().toIso8601String();
 
-      // Intenta obtener primero las vencidas por repetición espaciada
       List<Map<String, dynamic>> maps = await db.query(
         'table_questions',
         where: 'next_review <= ?',
@@ -78,7 +81,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         limit: 1,
       );
 
-      // Si no hay ninguna pendiente, obtiene cualquier pregunta de la base de datos al azar
       if (maps.isEmpty) {
         maps = await db.query('table_questions', orderBy: 'RANDOM()', limit: 1);
       }
@@ -109,8 +111,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
   }) async {
     try {
       final db = await appDatabase.database;
-
-      // Respetamos estrictamente las columnas existentes en el script de creación de SQLite
       await db.update(
         'table_questions',
         {
@@ -151,7 +151,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
   Future<int> getCurrentStreak() async {
     try {
       final db = await appDatabase.database;
-
       final List<Map<String, dynamic>> result = await db.rawQuery('''
         SELECT DISTINCT substr(answered_at, 1, 10) as study_date 
         FROM table_study_logs 
@@ -163,7 +162,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
 
       int streak = 0;
       DateTime expectedDate = DateTime.now();
-
       final todayStr = expectedDate.toIso8601String().substring(0, 10);
       final yesterdayStr = expectedDate
           .subtract(const Duration(days: 1))
@@ -171,10 +169,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
           .substring(0, 10);
       final firstLogDate = result.first['study_date'] as String;
 
-      if (firstLogDate != todayStr && firstLogDate != yesterdayStr) {
-        return 0;
-      }
-
+      if (firstLogDate != todayStr && firstLogDate != yesterdayStr) return 0;
       if (firstLogDate == yesterdayStr) {
         expectedDate = expectedDate.subtract(const Duration(days: 1));
       }
@@ -182,7 +177,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       for (final row in result) {
         final logDateStr = row['study_date'] as String;
         final expectedDateStr = expectedDate.toIso8601String().substring(0, 10);
-
         if (logDateStr == expectedDateStr) {
           streak++;
           expectedDate = expectedDate.subtract(const Duration(days: 1));
@@ -194,6 +188,48 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     } catch (e) {
       throw DatabaseException(
         message: 'Error al calcular la racha de estudio: $e',
+      );
+    }
+  }
+
+  @override
+  Future<void> saveBlockedApps(int subjectId, List<String> packageNames) async {
+    try {
+      final db = await appDatabase.database;
+      await db.transaction((txn) async {
+        await txn.delete(
+          'table_blocked_apps',
+          where: 'subject_id = ?',
+          whereArgs: [subjectId],
+        );
+        for (final packageName in packageNames) {
+          await txn.insert('table_blocked_apps', {
+            'subject_id': subjectId,
+            'package_name': packageName,
+          });
+        }
+      });
+    } catch (e) {
+      throw DatabaseException(message: 'Error al guardar apps bloqueadas: $e');
+    }
+  }
+
+  @override
+  Future<List<String>> getBlockedAppsForSubject(int subjectId) async {
+    try {
+      final db = await appDatabase.database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'table_blocked_apps',
+        where: 'subject_id = ?',
+        whereArgs: [subjectId],
+      );
+      return List.generate(
+        maps.length,
+        (i) => maps[i]['package_name'] as String,
+      );
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al recuperar apps bloqueadas: $e',
       );
     }
   }
@@ -223,13 +259,13 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         FROM table_pdf_documents pdf
         INNER JOIN table_subjects subj ON subj.id = pdf.subject_id
         WHERE subj.name = ?
-        ''',
+      ''',
         [subjectName],
       );
       return Sqflite.firstIntValue(result) ?? 0;
     } catch (e) {
       throw DatabaseException(
-        message: 'Error al contar los PDFs de la asignatura "$subjectName": $e',
+        message: 'Error al contar los PDFs de "$subjectName": $e',
       );
     }
   }
@@ -250,14 +286,11 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
           whereArgs: [subjectName],
           limit: 1,
         );
-
         int subjectId;
         final createdAt = DateTime.now().toIso8601String();
 
         if (existingSubjects.isNotEmpty) {
-          final existing = existingSubjects.first;
-          subjectId = existing['id'] as int;
-
+          subjectId = existingSubjects.first['id'] as int;
           await txn.update(
             'table_subjects',
             {'exam_date': examDate.toIso8601String(), 'is_active': 1},
@@ -272,7 +305,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
             'is_active': 1,
           });
         }
-
         await txn.insert('table_pdf_documents', {
           'subject_id': subjectId,
           'file_path': filePath,
@@ -281,9 +313,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         });
       });
     } catch (e) {
-      throw DatabaseException(
-        message: 'Error al guardar los datos del PDF/documento: $e',
-      );
+      throw DatabaseException(message: 'Error al guardar PDF: $e');
     }
   }
 
@@ -297,7 +327,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       );
       return rows.map(QuestionModel.fromMap).toList();
     } catch (e) {
-      throw DatabaseException(message: 'Error al recuperar las preguntas: $e');
+      throw DatabaseException(message: 'Error al recuperar preguntas: $e');
     }
   }
 
@@ -314,8 +344,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       return rows.map(QuestionModel.fromMap).toList();
     } catch (e) {
       throw DatabaseException(
-        message:
-            'Error al recuperar las preguntas de la asignatura "$subject": $e',
+        message: 'Error al recuperar preguntas de "$subject": $e',
       );
     }
   }
@@ -326,9 +355,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       final db = await appDatabase.database;
       return await db.query('table_subjects', orderBy: 'created_at DESC');
     } catch (e) {
-      throw DatabaseException(
-        message: 'Error al recuperar las asignaturas: $e',
-      );
+      throw DatabaseException(message: 'Error al recuperar asignaturas: $e');
     }
   }
 
@@ -347,7 +374,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         'is_active': isActive ? 1 : 0,
       });
     } catch (e) {
-      throw DatabaseException(message: 'Error al crear la asignatura: $e');
+      throw DatabaseException(message: 'Error al crear asignatura: $e');
     }
   }
 
@@ -362,9 +389,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         whereArgs: [id],
       );
     } catch (e) {
-      throw DatabaseException(
-        message: 'Error al actualizar el estado de la asignatura: $e',
-      );
+      throw DatabaseException(message: 'Error al actualizar asignatura: $e');
     }
   }
 
@@ -373,16 +398,10 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     try {
       final db = await appDatabase.database;
       final todayStr = DateTime.now().toIso8601String().substring(0, 10);
-
       final result = await db.rawQuery(
-        '''
-        SELECT COUNT(*) as total 
-        FROM table_study_logs 
-        WHERE substr(answered_at, 1, 10) = ?
-      ''',
+        'SELECT COUNT(*) as total FROM table_study_logs WHERE substr(answered_at, 1, 10) = ?',
         [todayStr],
       );
-
       return Sqflite.firstIntValue(result) ?? 0;
     } catch (e) {
       throw DatabaseException(message: 'Error al obtener conteo diario: $e');

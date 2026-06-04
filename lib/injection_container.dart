@@ -16,6 +16,7 @@ import 'package:study_blocker/domain/usecases/extract_text_from_pdf.dart';
 import 'package:study_blocker/domain/usecases/generate_quiz_with_ai.dart';
 import 'package:study_blocker/domain/usecases/get_random_question.dart';
 import 'package:study_blocker/domain/usecases/get_user_study_streak.dart';
+import 'package:study_blocker/presentation/auth/bloc/auth_bloc.dart';
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_bloc.dart';
 import 'package:study_blocker/presentation/quiz_overlay/bloc/quiz_bloc.dart';
 import 'package:study_blocker/presentation/study_management/bloc/app_selection/app_selection_bloc.dart';
@@ -63,6 +64,7 @@ Future<void> init() async {
   sl.registerFactory(
     () => QuizBloc(getRandomQuestion: sl(), checkUserAnswer: sl()),
   );
+  sl.registerFactory(() => AuthBloc(localConfig: sl()));
   sl.registerFactory(() => AppSelectionBloc(repository: sl()));
   sl.registerFactory(
     () => PdfUploadBloc(

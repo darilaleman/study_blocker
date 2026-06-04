@@ -16,12 +16,28 @@ import 'package:study_blocker/presentation/subscription/pages/subscription_scree
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await di.init();
-  runApp(const StudyBlockerApp());
+  bool initOk = true;
+  String? initError;
+
+  try {
+    await di.init();
+  } catch (e, st) {
+    initOk = false;
+    initError = e.toString();
+    // En release el print puede no verse, por eso mostramos la pantalla de error
+    // cuando la inicialización falla.
+    // ignore: avoid_print
+    print('Error fatal al iniciar: $e\n$st');
+  }
+
+  runApp(StudyBlockerApp(initOk: initOk, initError: initError));
 }
 
 class StudyBlockerApp extends StatelessWidget {
-  const StudyBlockerApp({super.key});
+  final bool initOk;
+  final String? initError;
+
+  const StudyBlockerApp({super.key, this.initOk = true, this.initError});
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +62,35 @@ class StudyBlockerApp extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
+
+    if (!initOk) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Error de inicio',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    initError ?? 'Fallo no especificado',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return MultiBlocProvider(
       providers: [
