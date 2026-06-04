@@ -20,6 +20,14 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Método que carga tus asignaturas en el Dashboard
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xff0f172a),

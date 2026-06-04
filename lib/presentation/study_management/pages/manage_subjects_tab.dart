@@ -17,8 +17,6 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
   List<AppInfo> _installedApps = [];
   final Set<String> _selectedPackageNames = {};
 
-  // Usaremos el ID de la primera asignatura activa para el ejemplo,
-  // o podrías agregar un Dropdown para seleccionar la asignatura actual.
   int? _currentSubjectId;
 
   @override
@@ -29,8 +27,6 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
 
   Future<void> _loadData() async {
     final subjects = await _subjectDatasource.getAllSubjects();
-
-    // Obtenemos apps de terceros (excluye sistema)
     List<AppInfo> apps = await InstalledApps.getInstalledApps(
       excludeSystemApps: true,
       withIcon: true,
@@ -39,9 +35,9 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
     setState(() {
       _subjects = subjects;
       _installedApps = apps;
-      // Seleccionamos la primera asignatura por defecto si existe
       if (subjects.isNotEmpty) {
-        _currentSubjectId = subjects.first['id'];
+        // Seleccionamos el primero si no hay uno seleccionado
+        _currentSubjectId ??= subjects.first['id'];
         _loadBlockedApps(_currentSubjectId!);
       }
     });
@@ -55,6 +51,16 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
       _selectedPackageNames.clear();
       _selectedPackageNames.addAll(blocked);
     });
+  }
+
+  Future<void> _deleteSubject(int id) async {
+    await _subjectDatasource.deleteSubject(id);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Asignatura eliminada")));
+    }
+    _loadData();
   }
 
   Future<void> _saveSettings() async {
@@ -71,6 +77,57 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
     }
   }
 
+  Future<void> _showCreateSubjectDialog() async {
+    final controller = TextEditingController();
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Nueva Asignatura"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: "Nombre de la asignatura",
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final ctx = context;
+              final name = controller.text.trim();
+              if (name.isEmpty) {
+                return;
+              }
+              final exists = _subjects.any(
+                (s) => s['name'].toLowerCase() == name.toLowerCase(),
+              );
+              if (exists) {
+                if (mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text("Esta asignatura ya existe")),
+                  );
+                }
+                return;
+              }
+              await _subjectDatasource.createSubject(
+                name: name,
+                isActive: false,
+              );
+              if (mounted) {
+                Navigator.pop(ctx);
+              }
+              _loadData();
+            },
+            child: const Text("Crear"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,6 +142,11 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showCreateSubjectDialog,
+        backgroundColor: Colors.blueAccent,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -96,6 +158,7 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 10),
           ..._subjects.map(
             (s) => Card(
               color: const Color(0xff1e293b),
@@ -104,12 +167,41 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
                   s['name'],
                   style: const TextStyle(color: Colors.white),
                 ),
-                trailing: Switch(
-                  value: s['is_active'] == 1,
-                  onChanged: (val) async {
-                    await _subjectDatasource.updateSubjectActive(s['id'], val);
-                    _loadData();
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: s['is_active'] == 1,
+                      onChanged: (val) async {
+                        final ctx = context;
+                        if (val) {
+                          final count = await _subjectDatasource
+                              .countActiveSubjects();
+                          if (count >= 2) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Máximo 2 asignaturas activas en versión gratuita",
+                                  ),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                        }
+                        await _subjectDatasource.updateSubjectActive(
+                          s['id'],
+                          val,
+                        );
+                        _loadData();
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.redAccent),
+                      onPressed: () => _deleteSubject(s['id']),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -117,7 +209,7 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
           const SizedBox(height: 20),
           const Divider(color: Colors.white24),
           const Text(
-            "Bloqueo de Apps (Selección en Vivo)",
+            "Bloqueo de Apps",
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -128,7 +220,7 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
           ..._installedApps.map(
             (app) => CheckboxListTile(
               title: Text(
-                app.versionName,
+                app.name,
                 style: const TextStyle(color: Colors.white),
               ),
               secondary: app.icon != null
@@ -138,11 +230,8 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
               onChanged: (bool? selected) {
                 setState(() {
                   if (selected == true) {
-                    // 1. Usamos llaves para el if
-                    // 2. Eliminamos el '!' porque packageName ya es un String no nulo
                     _selectedPackageNames.add(app.packageName);
                   } else {
-                    // 3. Usamos llaves para el else
                     _selectedPackageNames.remove(app.packageName);
                   }
                 });

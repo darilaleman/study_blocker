@@ -1,5 +1,5 @@
 Folder PATH listing for volume New Volume
-Volume serial number is FC04-7012
+Volume serial number is 00000095 FC04:7012
 D:.
 |   arbol.txt
 |   injection_container.dart
@@ -84,7 +84,6 @@ D:.
     |   |       
     |   \---pages
     |           dashboard_tab.dart
-    |           stats_screen.dart
     |           stats_tab.dart
     |           
     +---onboard_permissions
@@ -103,7 +102,6 @@ D:.
     |   \---widgets
     |           question_card.dart
     |           
-    +---screens
     +---settings
     |   \---pages
     |           settings_tab.dart

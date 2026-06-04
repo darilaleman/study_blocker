@@ -1,4 +1,5 @@
 import 'dart:async' show Future;
+import 'dart:io' show Platform;
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:study_blocker/data/datasources/device/screen_time_device_datasource.dart';
@@ -6,6 +7,7 @@ import 'package:study_blocker/data/datasources/local/app_config_local_datasource
 import 'package:study_blocker/data/datasources/local/app_database.dart';
 import 'package:study_blocker/data/datasources/local/question_local_datasource.dart';
 import 'package:study_blocker/data/datasources/remote/ai_quiz_remote_datasource.dart';
+import 'package:study_blocker/data/models/question_model.dart';
 import 'package:study_blocker/data/repositories/app_block_repository_impl.dart';
 import 'package:study_blocker/data/repositories/question_repository_impl.dart';
 import 'package:study_blocker/domain/repositories/app_block_repository.dart';
@@ -24,17 +26,127 @@ import 'package:study_blocker/presentation/study_management/bloc/pdf_upload_bloc
 
 final sl = GetIt.instance;
 
+// Datasources mock para plataformas no soportadas (web, etc)
+class _MockQuestionLocalDataSource implements QuestionLocalDataSource {
+  @override
+  Future<void> insertQuestions(List<QuestionModel> questions) async {}
+
+  @override
+  Future<QuestionModel> getRandomPendingQuestion() async =>
+      _createMockQuestion();
+
+  @override
+  Future<void> deleteSubject(int id) async {}
+
+  @override
+  Future<void> updateQuestionReviewData({
+    required int questionId,
+    required String nextReview,
+    required int interval,
+    required double easeFactor,
+    required int repetitions,
+  }) async {}
+
+  @override
+  Future<void> insertStudyLog(
+    int questionId,
+    bool isCorrect,
+    String answeredAt,
+  ) async {}
+
+  @override
+  Future<int> getCurrentStreak() async => 0;
+
+  @override
+  Future<int> getTodayAnsweredCount() async => 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllSubjects() async => [];
+
+  @override
+  Future<int> createSubject({
+    required String name,
+    required bool isActive,
+  }) async => 0;
+
+  @override
+  Future<void> updateSubjectActive(int id, bool isActive) async {}
+
+  @override
+  Future<List<QuestionModel>> getAllQuestions() async => [];
+
+  @override
+  Future<List<QuestionModel>> getQuestionsBySubject(String subject) async => [];
+
+  @override
+  Future<int> countActiveSubjects() async => 0;
+
+  @override
+  Future<int> countPdfsForSubject(String subjectName) async => 0;
+
+  @override
+  Future<void> saveSubjectAndPdf({
+    required String subjectName,
+    required DateTime examDate,
+    required String filePath,
+    required int pageCount,
+  }) async {}
+
+  @override
+  Future<void> saveBlockedApps(
+    int subjectId,
+    List<String> packageNames,
+  ) async {}
+
+  @override
+  Future<List<String>> getBlockedAppsForSubject(int subjectId) async => [];
+
+  static QuestionModel _createMockQuestion() => QuestionModel(
+    id: 1,
+    subject: 'Tema de prueba',
+    question: '¿Esta es una pregunta de prueba?',
+    options: const ['Sí', 'No', 'Tal vez'],
+    correctAnswer: 'Sí',
+    nextReview: DateTime.now(),
+    interval: 1,
+    easeFactor: 2.5,
+    repetitions: 0,
+  );
+}
+
 Future<void> init() async {
   final sharedPreferences = await SharedPreferences.getInstance();
 
   //! Data sources
-  sl.registerLazySingleton<AppDatabase>(() => AppDatabase.instance);
+  final bool isNativePlatform =
+      Platform.isAndroid ||
+      Platform.isIOS ||
+      Platform.isMacOS ||
+      Platform.isLinux ||
+      Platform.isWindows;
+
+  if (isNativePlatform) {
+    try {
+      sl.registerLazySingleton<AppDatabase>(() => AppDatabase.instance);
+      sl.registerLazySingleton<QuestionLocalDataSource>(
+        () => QuestionLocalDataSourceImpl(appDatabase: sl()),
+      );
+    } catch (e) {
+      // Fallback a mock si sqflite falla
+      sl.registerLazySingleton<QuestionLocalDataSource>(
+        () => _MockQuestionLocalDataSource(),
+      );
+    }
+  } else {
+    // En web u otras plataformas sin soporte, usar mock
+    sl.registerLazySingleton<QuestionLocalDataSource>(
+      () => _MockQuestionLocalDataSource(),
+    );
+  }
+
   sl.registerLazySingleton<SharedPreferences>(() => sharedPreferences);
   sl.registerLazySingleton<AppConfigLocalDataSource>(
     () => AppConfigLocalDataSourceImpl(sl()),
-  );
-  sl.registerLazySingleton<QuestionLocalDataSource>(
-    () => QuestionLocalDataSourceImpl(appDatabase: sl()),
   );
   sl.registerLazySingleton<AiQuizRemoteDataSource>(
     () => AiQuizRemoteDataSourceImpl(),

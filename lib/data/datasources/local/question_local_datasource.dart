@@ -9,6 +9,7 @@ import 'package:study_blocker/data/models/question_model.dart';
 abstract class QuestionLocalDataSource {
   Future<void> insertQuestions(List<QuestionModel> questions);
   Future<QuestionModel> getRandomPendingQuestion();
+  Future<void> deleteSubject(int id);
   Future<void> updateQuestionReviewData({
     required int questionId,
     required String nextReview,
@@ -64,6 +65,17 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       throw DatabaseException(
         message: 'Error al insertar preguntas en lote: $e',
       );
+    }
+  }
+
+  @override
+  Future<void> deleteSubject(int id) async {
+    try {
+      final db =
+          await appDatabase.database; // O como sea que accedas a tu DB aquí
+      await db.delete('table_subjects', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      throw DatabaseException(message: 'Error al eliminar asignatura: $e');
     }
   }
 
@@ -170,9 +182,8 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       final firstLogDate = result.first['study_date'] as String;
 
       if (firstLogDate != todayStr && firstLogDate != yesterdayStr) return 0;
-      if (firstLogDate == yesterdayStr) {
+      if (firstLogDate == yesterdayStr)
         expectedDate = expectedDate.subtract(const Duration(days: 1));
-      }
 
       for (final row in result) {
         final logDateStr = row['study_date'] as String;
