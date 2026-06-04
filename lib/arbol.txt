@@ -1,0 +1,140 @@
+Folder PATH listing for volume New Volume
+Volume serial number is FC04-7012
+D:.
+|   arbol.txt
+|   injection_container.dart
+|   main.dart
+|   
++---core
+|   +---constants
+|   |       app_constants.dart
+|   |       
+|   +---errors
+|   |       exceptions.dart
+|   |       failures.dart
+|   |       
+|   +---usecases
+|   |       usecase.dart
+|   |       
+|   \---utils
+|           helpers.dart
+|           sm2_algorithm.dart
+|           
++---data
+|   +---datasources
+|   |   +---device
+|   |   |       screen_time_device_datasource.dart
+|   |   |       
+|   |   +---local
+|   |   |       app_config_local_datasource.dart
+|   |   |       app_database.dart
+|   |   |       question_local_datasource.dart
+|   |   |       
+|   |   +---native
+|   |   |       app_block_service.dart
+|   |   |       
+|   |   \---remote
+|   |           ai_quiz_remote_datasource.dart
+|   |           
+|   +---models
+|   |       blocked_app_model.dart
+|   |       question_model.dart
+|   |       user_model.dart
+|   |       
+|   \---repositories
+|           app_block_repository_impl.dart
+|           question_repository_impl.dart
+|           
++---domain
+|   +---entities
+|   |       app_item.dart
+|   |       blocked_app.dart
+|   |       question.dart
+|   |       user.dart
+|   |       
+|   +---repositories
+|   |       app_block_repository.dart
+|   |       question_repository.dart
+|   |       
+|   \---usecases
+|           block_application.dart
+|           check_user_answer.dart
+|           extract_text_from_pdf.dart
+|           generate_quiz_with_ai.dart
+|           get_random_question.dart
+|           get_user_study_streak.dart
+|           
+\---presentation
+    |   main_screen.dart
+    |   
+    +---auth
+    |   +---bloc
+    |   |       auth_bloc.dart
+    |   |       auth_event.dart
+    |   |       auth_state.dart
+    |   |       
+    |   \---pages
+    |           login_screen.dart
+    |           
+    +---dashboard
+    |   +---bloc
+    |   |       dashboard_bloc.dart
+    |   |       dashboard_event.dart
+    |   |       dashboard_state.dart
+    |   |       
+    |   \---pages
+    |           dashboard_tab.dart
+    |           stats_screen.dart
+    |           stats_tab.dart
+    |           
+    +---onboard_permissions
+    |   \---pages
+    |           onboarding_permission_screen.dart
+    |           
+    +---quiz_overlay
+    |   +---bloc
+    |   |       quiz_bloc.dart
+    |   |       quiz_event.dart
+    |   |       quiz_state.dart
+    |   |       
+    |   +---pages
+    |   |       quiz_screen.dart
+    |   |       
+    |   \---widgets
+    |           question_card.dart
+    |           
+    +---screens
+    +---settings
+    |   \---pages
+    |           settings_tab.dart
+    |           
+    +---shared
+    |   \---widgets
+    |           custom_button.dart
+    |           loading_indicator.dart
+    |           
+    +---study_management
+    |   +---bloc
+    |   |   |   pdf_upload_bloc.dart
+    |   |   |   pdf_upload_event.dart
+    |   |   |   pdf_upload_state.dart
+    |   |   |   
+    |   |   \---app_selection
+    |   |           app_selection_bloc.dart
+    |   |           app_selection_event.dart
+    |   |           app_selection_state.dart
+    |   |           
+    |   \---pages
+    |           app_selection_screen.dart
+    |           manage_subjects_tab.dart
+    |           pdf_upload_screen.dart
+    |           study_material_screen.dart
+    |           
+    \---subscription
+        +---bloc
+        |       subscription_event.dart
+        |       subscription_state.dart
+        |       
+        \---pages
+                subscription_screen.dart
+                

@@ -7,8 +7,7 @@ import 'package:study_blocker/presentation/auth/bloc/auth_event.dart';
 import 'package:study_blocker/presentation/auth/bloc/auth_state.dart';
 import 'package:study_blocker/presentation/auth/pages/login_screen.dart';
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_bloc.dart';
-import 'package:study_blocker/presentation/dashboard/pages/home_screen.dart';
-import 'package:study_blocker/presentation/dashboard/pages/stats_screen.dart';
+import 'package:study_blocker/presentation/main_screen.dart';
 import 'package:study_blocker/presentation/onboard_permissions/pages/onboarding_permission_screen.dart';
 import 'package:study_blocker/presentation/quiz_overlay/bloc/quiz_bloc.dart';
 import 'package:study_blocker/presentation/quiz_overlay/pages/quiz_screen.dart';
@@ -51,8 +50,7 @@ class StudyBlockerApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider<AuthBloc>(
-          create: (context) =>
-              AuthBloc(localConfig: di.sl())..add(AppStarted()),
+          create: (context) => di.sl<AuthBloc>()..add(AppStarted()),
         ),
         BlocProvider<DashboardBloc>(create: (_) => di.sl<DashboardBloc>()),
         BlocProvider<QuizBloc>(create: (_) => di.sl<QuizBloc>()),
@@ -64,7 +62,7 @@ class StudyBlockerApp extends StatelessWidget {
         home: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, state) {
             if (state is Authenticated) {
-              return const HomeScreen();
+              return const MainScreen();
             } else if (state is Unauthenticated || state is AuthError) {
               return const LoginScreen();
             }
@@ -78,10 +76,9 @@ class StudyBlockerApp extends StatelessWidget {
           AppConstants.routeAuth: (context) => const LoginScreen(),
           AppConstants.routePermissions: (context) =>
               const OnboardingPermissionScreen(),
-          AppConstants.routeHome: (context) => const HomeScreen(),
+          AppConstants.routeHome: (context) => const MainScreen(),
           AppConstants.routePdfUpload: (context) => const PdfUploadScreen(),
           AppConstants.routeQuizOverlay: (context) => const QuizScreen(),
-          AppConstants.routeStats: (context) => const StatsScreen(),
           AppConstants.routeSubscription: (context) =>
               const SubscriptionScreen(),
         },

@@ -20,11 +20,16 @@ class AppDatabase {
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, filePath);
 
-      return await openDatabase(path, version: 1, onCreate: _createDB);
+      // Incrementamos la versión a 2 para incluir la nueva tabla
+      return await openDatabase(
+        path,
+        version: 2,
+        onCreate: _createDB,
+        onUpgrade: _onUpgrade,
+      );
     } catch (e) {
       throw DatabaseException(
-        message:
-            'No se pudo inicializar el almacenamiento de la base de datos: ${e.toString()}',
+        message: 'No se pudo inicializar la base de datos: ${e.toString()}',
       );
     }
   }
@@ -35,18 +40,16 @@ class AppDatabase {
     const intType = 'INTEGER NOT NULL';
     const realType = 'REAL NOT NULL';
 
-    // 1. TABLA DE ASIGNATURAS (ACTUALIZADA)
     await db.execute('''
       CREATE TABLE table_subjects (
         id $idType,
         name $textType,
         exam_date $textType,
         created_at $textType,
-        is_active $intType DEFAULT 0 -- 0 = inactiva, 1 = activa
+        is_active $intType DEFAULT 0
       )
     ''');
 
-    // 2. TABLA DE DOCUMENTOS PDF (NUEVA)
     await db.execute('''
       CREATE TABLE table_pdf_documents (
         id $idType,
@@ -58,32 +61,54 @@ class AppDatabase {
       )
     ''');
 
-    // 3. TABLA DE PREGUNTAS (Añadido subject_id como llave foránea opcional)
     await db.execute('''
       CREATE TABLE table_questions (
         id $idType,
-        subject_id INTEGER, -- Puede ser nulo por retrocompatibilidad
+        subject_id INTEGER,
         question $textType,
         options $textType,       
         correct_answer $textType,
         subject $textType,          
-        next_review $textType,     
-        interval $intType,         
+        next_review $textType,    
+        interval $intType,        
         ease_factor $realType,
         repetitions $intType,
         FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
       )
     ''');
 
-    // 4. TABLA DE HISTORIAL DE RESPUESTAS
     await db.execute('''
       CREATE TABLE table_study_logs (
         id $idType,
         question_id $intType,
         is_correct $intType,       
-        answered_at $textType,     
+        answered_at $textType,    
         FOREIGN KEY (question_id) REFERENCES table_questions (id) ON DELETE CASCADE
       )
     ''');
+
+    // 5. NUEVA TABLA: Bloqueo de aplicaciones por asignatura
+    await db.execute('''
+      CREATE TABLE table_blocked_apps (
+        id $idType,
+        subject_id $intType,
+        package_name $textType,
+        FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  // Manejo de migración para usuarios existentes
+  FutureOr<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE table_blocked_apps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          subject_id INTEGER NOT NULL,
+          package_name TEXT NOT NULL,
+          FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
+        )
+      ''');
+    }
   }
 }

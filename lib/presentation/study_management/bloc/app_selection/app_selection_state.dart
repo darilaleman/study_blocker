@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import '../../../../domain/entities/app_item.dart';
+import '../../../../../domain/entities/app_item.dart';
 
 abstract class AppSelectionState extends Equatable {
   const AppSelectionState();

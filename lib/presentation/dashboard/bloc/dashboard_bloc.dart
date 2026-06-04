@@ -17,19 +17,25 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
   ) async {
     emit(DashboardLoading());
 
-    // Llamamos al método real definido en el contrato del repositorio de dominio
+    // Llamamos al repositorio
     final result = await questionRepository.getStudyStats();
 
     result.fold((failure) => emit(DashboardError(message: failure.message)), (
       statsMap,
     ) {
-      // Extraemos los valores de forma segura mapeando las llaves del mapa de SQLite/Dominio
-      // Usamos el operador de coalescencia (??) por si los campos vienen nulos
+      // Extraemos valores asegurando tipos y usando valores por defecto
       final int streak = statsMap['current_streak'] as int? ?? 0;
-      final int todayCount = statsMap['today_answered_count'] as int? ?? 0;
+      final int answered = statsMap['today_answered_count'] as int? ?? 0;
+
+      // Asumiendo que el mapa tiene el tiempo, si no, puedes cambiar la lógica
+      final int time = statsMap['study_time_minutes'] as int? ?? 0;
 
       emit(
-        DashboardLoaded(currentStreak: streak, todayAnsweredCount: todayCount),
+        DashboardLoaded(
+          currentStreak: streak,
+          questionsAnswered: answered,
+          studyTimeMinutes: time,
+        ),
       );
     });
   }

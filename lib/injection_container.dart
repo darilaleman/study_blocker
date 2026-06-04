@@ -18,7 +18,7 @@ import 'package:study_blocker/domain/usecases/get_random_question.dart';
 import 'package:study_blocker/domain/usecases/get_user_study_streak.dart';
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_bloc.dart';
 import 'package:study_blocker/presentation/quiz_overlay/bloc/quiz_bloc.dart';
-import 'package:study_blocker/presentation/bloc/app_selection/app_selection_bloc.dart';
+import 'package:study_blocker/presentation/study_management/bloc/app_selection/app_selection_bloc.dart';
 import 'package:study_blocker/presentation/study_management/bloc/pdf_upload_bloc.dart';
 
 final sl = GetIt.instance;

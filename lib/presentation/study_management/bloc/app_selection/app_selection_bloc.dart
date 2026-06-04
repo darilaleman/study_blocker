@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../domain/entities/app_item.dart';
-import '../../../../domain/entities/blocked_app.dart';
-import '../../../../domain/repositories/app_block_repository.dart';
+import '../../../../../domain/entities/app_item.dart';
+import '../../../../../domain/entities/blocked_app.dart';
+import '../../../../../domain/repositories/app_block_repository.dart';
 import 'app_selection_event.dart';
 import 'app_selection_state.dart';
 
