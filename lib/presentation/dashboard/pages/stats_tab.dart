@@ -31,30 +31,33 @@ class StatsTab extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               children: [
                 _buildStatCard(
-                  "Tiempo de estudio",
-                  "${state.studyTimeMinutes} min",
-                  Icons.timer_rounded,
+                  "Racha actual",
+                  "${state.currentStreak} días ${state.studiedToday ? '🔥' : ''}",
+                  Icons.local_fire_department_rounded,
+                  state.studiedToday ? Colors.orange : Colors.white70,
                 ),
                 _buildStatCard(
-                  "Preguntas respondidas",
+                  "Preguntas respondidas hoy",
                   "${state.questionsAnswered}",
                   Icons.quiz_rounded,
-                ),
-                _buildStatCard(
-                  "Racha actual",
-                  "${state.currentStreak} días",
-                  Icons.local_fire_department_rounded,
+                  AppConstants.primaryColor,
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  "Progreso por Asignatura",
+                  "Consejo:",
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                // Aquí podrías agregar un gráfico o una lista simplificada
+                const SizedBox(height: 8),
+                Text(
+                  state.studiedToday
+                      ? "¡Excelente trabajo! Ya has mantenido tu racha hoy. Vuelve mañana para seguirla."
+                      : "Responde al menos una pregunta hoy para encender tu racha y no perder el progreso.",
+                  style: const TextStyle(color: Colors.white70, height: 1.4),
+                ),
               ],
             );
           }
@@ -70,19 +73,24 @@ class StatsTab extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color iconColor,
+  ) {
     return Card(
       color: const Color(0xff1e293b),
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
-        leading: Icon(icon, color: AppConstants.accentColor),
+        leading: Icon(icon, color: iconColor, size: 32),
         title: Text(title, style: const TextStyle(color: Colors.white70)),
         trailing: Text(
           value,
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: 16,
+            fontSize: 20,
           ),
         ),
       ),

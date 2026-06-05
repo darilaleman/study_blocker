@@ -11,6 +11,7 @@ import 'package:study_blocker/presentation/main_screen.dart';
 import 'package:study_blocker/presentation/onboard_permissions/pages/onboarding_permission_screen.dart';
 import 'package:study_blocker/presentation/quiz_overlay/bloc/quiz_bloc.dart';
 import 'package:study_blocker/presentation/quiz_overlay/pages/quiz_screen.dart';
+import 'package:study_blocker/presentation/study_management/pages/create_study_goal_screen.dart';
 import 'package:study_blocker/presentation/study_management/pages/pdf_upload_screen.dart';
 import 'package:study_blocker/presentation/subscription/pages/subscription_screen.dart';
 
@@ -24,9 +25,6 @@ Future<void> main() async {
   } catch (e, st) {
     initOk = false;
     initError = e.toString();
-    // En release el print puede no verse, por eso mostramos la pantalla de error
-    // cuando la inicialización falla.
-    // ignore: avoid_print
     print('Error fatal al iniciar: $e\n$st');
   }
 
@@ -118,6 +116,8 @@ class StudyBlockerApp extends StatelessWidget {
           },
         ),
         routes: {
+          AppConstants.routeCreateGoal: (context) =>
+              const CreateStudyGoalScreen(),
           AppConstants.routeAuth: (context) => const LoginScreen(),
           AppConstants.routePermissions: (context) =>
               const OnboardingPermissionScreen(),

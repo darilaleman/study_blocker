@@ -17,24 +17,22 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
   ) async {
     emit(DashboardLoading());
 
-    // Llamamos al repositorio
     final result = await questionRepository.getStudyStats();
 
     result.fold((failure) => emit(DashboardError(message: failure.message)), (
       statsMap,
     ) {
-      // Extraemos valores asegurando tipos y usando valores por defecto
       final int streak = statsMap['current_streak'] as int? ?? 0;
       final int answered = statsMap['today_answered_count'] as int? ?? 0;
 
-      // Asumiendo que el mapa tiene el tiempo, si no, puedes cambiar la lógica
-      final int time = statsMap['study_time_minutes'] as int? ?? 0;
+      // Lógica tipo Duolingo: Si respondió al menos 1 pregunta hoy, la racha de hoy está activa
+      final bool studiedToday = answered > 0;
 
       emit(
         DashboardLoaded(
           currentStreak: streak,
           questionsAnswered: answered,
-          studyTimeMinutes: time,
+          studiedToday: studiedToday,
         ),
       );
     });

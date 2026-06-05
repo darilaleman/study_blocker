@@ -1,8 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pdf_text/pdf_text.dart';
 import 'package:study_blocker/core/constants/app_constants.dart';
+import 'package:study_blocker/data/datasources/local/question_local_datasource.dart';
 import 'package:study_blocker/injection_container.dart' as di;
 import 'package:study_blocker/presentation/shared/widgets/loading_indicator.dart';
 import '../bloc/pdf_upload_bloc.dart';
@@ -14,7 +16,6 @@ class PdfUploadScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Recuperamos las asignaturas activas pasadas desde el Dashboard
     final activeSubjects =
         ModalRoute.of(context)?.settings.arguments
             as List<Map<String, dynamic>>? ??
@@ -38,21 +39,20 @@ class PdfUploadView extends StatefulWidget {
 class _PdfUploadViewState extends State<PdfUploadView> {
   final _formKey = GlobalKey<FormState>();
   String? _selectedSubjectId;
+  bool _isPdfLocked = false;
 
   Future<void> _pickExamDate(
     BuildContext context,
     DateTime? currentDate,
   ) async {
     final now = DateTime.now();
-    final maxDate = now.add(const Duration(days: 7));
-
+    final maxDate = now.add(const Duration(days: 365));
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: currentDate ?? now,
       firstDate: now,
       lastDate: maxDate,
     );
-
     if (selectedDate != null && mounted) {
       context.read<PdfUploadBloc>().add(ExamDateChanged(selectedDate));
     }
@@ -82,12 +82,35 @@ class _PdfUploadViewState extends State<PdfUploadView> {
 
   Future<int> _resolvePageCount(String? filePath) async {
     if (filePath == null || filePath.isEmpty) return 0;
-
     try {
       final pdfDoc = await PDFDoc.fromPath(filePath);
       return pdfDoc.length;
     } catch (_) {
       return 0;
+    }
+  }
+
+  Future<void> _checkPdfLockStatus(String subjectId) async {
+    try {
+      final subjects = await di.sl<QuestionLocalDataSource>().getAllSubjects();
+      final subject = subjects.firstWhere(
+        (s) => s['id'].toString() == subjectId,
+      );
+
+      final hasPdf =
+          await di.sl<QuestionLocalDataSource>().countPdfsForSubject(
+            subject['name'],
+          ) >
+          0;
+      final isReplaced = subject['pdf_replaced'] == 1;
+
+      if (mounted) {
+        setState(() {
+          _isPdfLocked = hasPdf && isReplaced;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al verificar estado del PDF: $e');
     }
   }
 
@@ -115,16 +138,18 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                 SnackBar(
                   content: Text(state.errorMessage),
                   backgroundColor: Colors.redAccent,
+                  duration: const Duration(seconds: 4),
                 ),
               );
             }
           } else if (state.status == PdfUploadStatus.success) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('PDF guardado en la base de datos.'),
-                backgroundColor: Colors.blueAccent,
+              SnackBar(
+                content: Text(state.errorMessage),
+                backgroundColor: Colors.green,
               ),
             );
+            Navigator.of(context).pop();
           }
         },
         builder: (context, state) {
@@ -135,17 +160,17 @@ class _PdfUploadViewState extends State<PdfUploadView> {
           return Stack(
             children: [
               SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(20.0),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // SELECTOR DE ASIGNATURA EN LUGAR DE TEXTFIELD
+                      // 1. SELECTOR DE ASIGNATURA
                       DropdownButtonFormField<String>(
-                        initialValue: _selectedSubjectId,
+                        value: _selectedSubjectId,
                         decoration: const InputDecoration(
-                          labelText: 'Selecciona una Asignatura Activa',
+                          labelText: 'Asignatura Activa',
                           prefixIcon: Icon(
                             Icons.book_rounded,
                             color: Colors.white54,
@@ -161,7 +186,7 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                         }).toList(),
                         onChanged: isProcessing
                             ? null
-                            : (val) {
+                            : (val) async {
                                 setState(() => _selectedSubjectId = val);
                                 if (val != null) {
                                   final name = widget.activeSubjects.firstWhere(
@@ -170,11 +195,11 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                                   context.read<PdfUploadBloc>().add(
                                     SubjectNameChanged(name),
                                   );
+                                  await _checkPdfLockStatus(val);
                                 }
                               },
-                        validator: (value) => value == null
-                            ? 'Debes seleccionar una asignatura activa'
-                            : null,
+                        validator: (value) =>
+                            value == null ? 'Selecciona una asignatura' : null,
                       ),
 
                       if (widget.activeSubjects.isEmpty)
@@ -186,9 +211,9 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                           ),
                         ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
 
-                      // FECHA DE EXAMEN
+                      // 2. FECHA DE EXAMEN
                       InkWell(
                         onTap: isProcessing
                             ? null
@@ -197,7 +222,7 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
-                            vertical: 16,
+                            vertical: 14,
                           ),
                           decoration: BoxDecoration(
                             color: Colors.grey.withValues(alpha: 0.05),
@@ -209,147 +234,352 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                               const Icon(
                                 Icons.calendar_month_rounded,
                                 color: Colors.white54,
+                                size: 22,
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                state.examDate == null
-                                    ? 'Seleccionar fecha de examen'
-                                    : '${state.examDate!.day}/${state.examDate!.month}/${state.examDate!.year}',
-                                style: TextStyle(
-                                  color: state.examDate == null
-                                      ? Colors.white54
-                                      : Colors.white,
-                                  fontSize: 16,
+                              Expanded(
+                                child: Text(
+                                  state.examDate == null
+                                      ? 'Fecha de examen'
+                                      : '${state.examDate!.day}/${state.examDate!.month}/${state.examDate!.year}',
+                                  style: TextStyle(
+                                    color: state.examDate == null
+                                        ? Colors.white54
+                                        : Colors.white,
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
 
-                      // SELECCIÓN DE ARCHIVO CON FILE_PICKER
+                      const SizedBox(height: 12),
+
+                      // 3. ZONA DE SELECCIÓN DE PDF CON ESTADO DE BLOQUEO
                       InkWell(
-                        onTap: isProcessing
+                        onTap: (isProcessing || _isPdfLocked)
                             ? null
                             : () => _pickPdfFile(context),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            vertical: 40,
+                            vertical: 20,
                             horizontal: 16,
                           ),
                           decoration: BoxDecoration(
-                            color: state.fileName != null
-                                ? theme.colorScheme.primary.withValues(
-                                    alpha: 0.1,
-                                  )
-                                : theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
+                            color: _isPdfLocked
+                                ? Colors.red.withValues(alpha: 0.1)
+                                : (state.fileName != null
+                                      ? theme.colorScheme.primary.withValues(
+                                          alpha: 0.1,
+                                        )
+                                      : const Color(0xff1e293b)),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: state.fileName != null
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outlineVariant,
-                              width: state.fileName != null ? 2 : 1,
+                              color: _isPdfLocked
+                                  ? Colors.red.withValues(alpha: 0.5)
+                                  : (state.fileName != null
+                                        ? theme.colorScheme.primary
+                                        : Colors.white38),
+                              width: _isPdfLocked
+                                  ? 2
+                                  : (state.fileName != null ? 2 : 1.5),
+                              style: BorderStyle.solid,
                             ),
                           ),
-                          child: Column(
+                          child: Row(
                             children: [
                               Icon(
-                                state.fileName != null
-                                    ? Icons.picture_as_pdf_rounded
-                                    : Icons.cloud_upload_rounded,
-                                size: 48,
-                                color: state.fileName != null
-                                    ? theme.colorScheme.primary
-                                    : Colors.white54,
+                                _isPdfLocked
+                                    ? Icons.lock_rounded
+                                    : (state.fileName != null
+                                          ? Icons.picture_as_pdf_rounded
+                                          : Icons.cloud_upload_rounded),
+                                size: 32,
+                                color: _isPdfLocked
+                                    ? Colors.red
+                                    : (state.fileName != null
+                                          ? theme.colorScheme.primary
+                                          : Colors.white70),
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                state.fileName ??
-                                    'Abrir Explorador y Seleccionar PDF',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: state.fileName != null
-                                      ? theme.colorScheme.primary
-                                      : Colors.white,
-                                  fontWeight: FontWeight.bold,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isPdfLocked
+                                          ? 'PDF Bloqueado hasta el examen'
+                                          : (state.fileName ??
+                                                'Toca para buscar un PDF'),
+                                      style: TextStyle(
+                                        color: _isPdfLocked
+                                            ? Colors.red
+                                            : (state.fileName != null
+                                                  ? theme.colorScheme.primary
+                                                  : Colors.white),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    if (_isPdfLocked) ...[
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Ya usaste tu único cambio de PDF. No puedes modificarlo hasta la fecha del examen.',
+                                        style: TextStyle(
+                                          color: Colors.red,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ] else if (state.fileName == null) ...[
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Máximo 10 MB',
+                                        style: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${state.pageCount} páginas • ${state.filePath?.split('/').last ?? ''}',
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 32),
 
-                      ElevatedButton(
+                      const SizedBox(height: 16),
+
+                      // 4. ✅ GUÍA DE FORMATO (SOLO PARA USUARIOS FREE)
+                      if (!state.isVip) ...[
+                        Card(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: Colors.blue.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      color: Colors.blue,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Plan Gratuito: Formato de Preguntas',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Para generar preguntas automáticamente, tu PDF debe seguir este formato:\n\n'
+                                  '1. ¿Cuál es la capital de Francia?\n'
+                                  '   a) Madrid\n'
+                                  '   b) París ✓\n'
+                                  '   c) Londres\n'
+                                  '   d) Berlín\n\n'
+                                  'Usa "✓", "✔" o "*" para marcar la respuesta correcta.',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                OutlinedButton.icon(
+                                  onPressed: () {
+                                    Clipboard.setData(
+                                      const ClipboardData(
+                                        text:
+                                            '1. ¿Tu pregunta aquí?\n   a) Opción incorrecta\n   b) Opción correcta ✓\n   c) Opción incorrecta\n   d) Opción incorrecta',
+                                      ),
+                                    );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Plantilla copiada al portapapeles',
+                                        ),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.copy, size: 18),
+                                  label: const Text(
+                                    'Copiar Formato de Plantilla',
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.blue,
+                                    side: const BorderSide(color: Colors.blue),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // 5. ✅ BOTÓN INTELIGENTE (cambia según VIP o Free)
+                      ElevatedButton.icon(
                         onPressed:
-                            state.isFormValid &&
+                            (state.isFormValid &&
+                                _selectedSubjectId != null &&
                                 !isProcessing &&
-                                _selectedSubjectId != null
+                                !_isPdfLocked)
                             ? () {
                                 if (_formKey.currentState!.validate()) {
-                                  context.read<PdfUploadBloc>().add(
-                                    SavePdfRequested(),
-                                  );
+                                  if (state.isVip) {
+                                    context.read<PdfUploadBloc>().add(
+                                      ProcessAiRequested(),
+                                    );
+                                  } else {
+                                    context.read<PdfUploadBloc>().add(
+                                      SavePdfRequested(),
+                                    );
+                                  }
                                 }
                               }
                             : null,
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: Colors.white10,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text(
-                          'Cargar y Guardar PDF',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      ElevatedButton.icon(
-                        onPressed:
-                            state.status == PdfUploadStatus.success &&
-                                !isProcessing
-                            ? () => context.read<PdfUploadBloc>().add(
-                                ProcessAiRequested(),
-                              )
-                            : (!state.isVip
-                                  ? () => Navigator.of(
-                                      context,
-                                    ).pushNamed(AppConstants.routeSubscription)
-                                  : null),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: state.isVip
+                          backgroundColor:
+                              (state.isFormValid &&
+                                  _selectedSubjectId != null &&
+                                  !_isPdfLocked)
                               ? AppConstants.primaryColor
-                              : Colors.grey[800],
+                              : const Color(0xff334155),
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: const Color(0xff334155),
+                          disabledForegroundColor: Colors.white70,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color:
+                                  (state.isFormValid &&
+                                      _selectedSubjectId != null &&
+                                      !_isPdfLocked)
+                                  ? Colors.transparent
+                                  : Colors.white24,
+                              width: 1,
+                            ),
+                          ),
                         ),
                         icon: Icon(
-                          state.isVip
-                              ? Icons.auto_awesome_rounded
-                              : Icons.lock_rounded,
+                          isProcessing
+                              ? Icons.hourglass_empty_rounded
+                              : (state.isVip
+                                    ? Icons.auto_awesome_rounded
+                                    : Icons.text_snippet_rounded),
                           color: Colors.white,
+                          size: 22,
                         ),
                         label: Text(
-                          state.isVip
-                              ? 'Procesar con Inteligencia Artificial'
-                              : 'Procesar con IA (VIP Requerido)',
+                          isProcessing
+                              ? 'Procesando...'
+                              : (state.isVip
+                                    ? 'Procesar con Inteligencia Artificial'
+                                    : 'Procesar PDF (Formato Manual)'),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
+                            fontSize: 15,
                             color: Colors.white,
                           ),
                         ),
                       ),
+
+                      if (!(state.isFormValid && _selectedSubjectId != null) &&
+                          !isProcessing &&
+                          !_isPdfLocked) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Completa la asignatura, la fecha y el archivo para habilitar.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                      ],
+
+                      if (_isPdfLocked) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Esta asignatura ya tiene un PDF asociado y se usó el cambio permitido.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+
+                      // ✅ BOTÓN SECUNDARIO VIP (si es Free, ofrece upgrade)
+                      if (!state.isVip) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => Navigator.of(
+                            context,
+                          ).pushNamed(AppConstants.routeSubscription),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: Colors.amber.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            foregroundColor: Colors.amber,
+                          ),
+                          icon: const Icon(
+                            Icons.workspace_premium_rounded,
+                            size: 20,
+                          ),
+                          label: const Text(
+                            'Desbloquear IA Premium',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
               ),
 
-              if (state.status == PdfUploadStatus.loading)
+              // Overlay de carga a pantalla completa
+              if (isProcessing)
                 const LoadingIndicator(
                   isFullScreen: true,
-                  message: 'Validando límites y guardando PDF...',
+                  message: 'Procesando documento...',
                 ),
             ],
           );

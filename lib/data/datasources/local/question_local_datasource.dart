@@ -1,5 +1,4 @@
 // ignore_for_file: override_on_non_overriding_member
-
 import 'package:sqflite/sqflite.dart' hide DatabaseException;
 import 'package:study_blocker/core/errors/exceptions.dart';
 import 'package:study_blocker/data/datasources/local/app_database.dart';
@@ -24,7 +23,6 @@ abstract class QuestionLocalDataSource {
   );
   Future<int> getCurrentStreak();
   Future<int> getTodayAnsweredCount();
-
   Future<List<Map<String, dynamic>>> getAllSubjects();
   Future<int> createSubject({required String name, required bool isActive});
   Future<void> updateSubjectActive(int id, bool isActive);
@@ -38,10 +36,11 @@ abstract class QuestionLocalDataSource {
     required String filePath,
     required int pageCount,
   });
-
-  // Métodos nuevos para el bloqueo de aplicaciones
   Future<void> saveBlockedApps(int subjectId, List<String> packageNames);
   Future<List<String>> getBlockedAppsForSubject(int subjectId);
+
+  // ✅ NUEVO MÉTODO
+  Future<void> deactivateExpiredSubjects();
 }
 
 /// IMPLEMENTACIÓN CONCRETA
@@ -55,11 +54,9 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     try {
       final db = await appDatabase.database;
       final batch = db.batch();
-
       for (final question in questions) {
         batch.insert('table_questions', question.toMap());
       }
-
       await batch.commit(noResult: true);
     } catch (e) {
       throw DatabaseException(
@@ -71,8 +68,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
   @override
   Future<void> deleteSubject(int id) async {
     try {
-      final db =
-          await appDatabase.database; // O como sea que accedas a tu DB aquí
+      final db = await appDatabase.database;
       await db.delete('table_subjects', where: 'id = ?', whereArgs: [id]);
     } catch (e) {
       throw DatabaseException(message: 'Error al eliminar asignatura: $e');
@@ -84,7 +80,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     try {
       final db = await appDatabase.database;
       final nowStr = DateTime.now().toIso8601String();
-
       List<Map<String, dynamic>> maps = await db.query(
         'table_questions',
         where: 'next_review <= ?',
@@ -164,9 +159,9 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     try {
       final db = await appDatabase.database;
       final List<Map<String, dynamic>> result = await db.rawQuery('''
-        SELECT DISTINCT substr(answered_at, 1, 10) as study_date 
-        FROM table_study_logs 
-        WHERE is_correct = 1 
+        SELECT DISTINCT substr(answered_at, 1, 10) as study_date
+        FROM table_study_logs
+        WHERE is_correct = 1
         ORDER BY study_date DESC
       ''');
 
@@ -188,6 +183,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       for (final row in result) {
         final logDateStr = row['study_date'] as String;
         final expectedDateStr = expectedDate.toIso8601String().substring(0, 10);
+
         if (logDateStr == expectedDateStr) {
           streak++;
           expectedDate = expectedDate.subtract(const Duration(days: 1));
@@ -200,6 +196,21 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       throw DatabaseException(
         message: 'Error al calcular la racha de estudio: $e',
       );
+    }
+  }
+
+  @override
+  Future<int> getTodayAnsweredCount() async {
+    try {
+      final db = await appDatabase.database;
+      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as total FROM table_study_logs WHERE substr(answered_at, 1, 10) = ?',
+        [todayStr],
+      );
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (e) {
+      throw DatabaseException(message: 'Error al obtener conteo diario: $e');
     }
   }
 
@@ -270,7 +281,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         FROM table_pdf_documents pdf
         INNER JOIN table_subjects subj ON subj.id = pdf.subject_id
         WHERE subj.name = ?
-      ''',
+        ''',
         [subjectName],
       );
       return Sqflite.firstIntValue(result) ?? 0;
@@ -297,25 +308,71 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
           whereArgs: [subjectName],
           limit: 1,
         );
+
         int subjectId;
         final createdAt = DateTime.now().toIso8601String();
 
         if (existingSubjects.isNotEmpty) {
           subjectId = existingSubjects.first['id'] as int;
-          await txn.update(
-            'table_subjects',
-            {'exam_date': examDate.toIso8601String(), 'is_active': 1},
-            where: 'id = ?',
+
+          // ✅ VALIDACIÓN: ¿Ya tiene un PDF y ya se reemplazó una vez?
+          final existingPdfs = await txn.query(
+            'table_pdf_documents',
+            where: 'subject_id = ?',
             whereArgs: [subjectId],
           );
+
+          if (existingPdfs.isNotEmpty) {
+            final int pdfReplaced =
+                existingSubjects.first['pdf_replaced'] as int? ?? 0;
+
+            if (pdfReplaced == 1) {
+              // ✅ LANZAMOS EXCEPCIÓN ESPECÍFICA PARA QUE EL BLOC LA CAPTE
+              throw DatabaseException(
+                message: 'PDF_ALREADY_REPLACED',
+                code: 'LIMIT_EXCEEDED',
+              );
+            }
+
+            // Si llega aquí, es el primer reemplazo. Borramos el PDF anterior.
+            await txn.delete(
+              'table_pdf_documents',
+              where: 'subject_id = ?',
+              whereArgs: [subjectId],
+            );
+
+            // Marcamos que ya se usó el comodín de reemplazo
+            await txn.update(
+              'table_subjects',
+              {
+                'pdf_replaced': 1,
+                'exam_date': examDate.toIso8601String(),
+                'is_active': 1,
+              },
+              where: 'id = ?',
+              whereArgs: [subjectId],
+            );
+          } else {
+            // No tenía PDF, solo actualizamos fecha y activamos
+            await txn.update(
+              'table_subjects',
+              {'exam_date': examDate.toIso8601String(), 'is_active': 1},
+              where: 'id = ?',
+              whereArgs: [subjectId],
+            );
+          }
         } else {
+          // Asignatura nueva
           subjectId = await txn.insert('table_subjects', {
             'name': subjectName,
             'exam_date': examDate.toIso8601String(),
             'created_at': createdAt,
             'is_active': 1,
+            'pdf_replaced': 0,
           });
         }
+
+        // Insertamos el nuevo PDF
         await txn.insert('table_pdf_documents', {
           'subject_id': subjectId,
           'file_path': filePath,
@@ -324,7 +381,40 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         });
       });
     } catch (e) {
+      if (e is DatabaseException) rethrow;
       throw DatabaseException(message: 'Error al guardar PDF: $e');
+    }
+  }
+
+  // ✅ NUEVO MÉTODO: Limpia asignaturas cuya fecha de examen ya pasó
+  @override
+  Future<void> deactivateExpiredSubjects() async {
+    try {
+      final db = await appDatabase.database;
+      final nowStr = DateTime.now().toIso8601String();
+
+      // 1. Desactivar asignaturas vencidas
+      await db.update(
+        'table_subjects',
+        {'is_active': 0},
+        where: 'exam_date <= ? AND is_active = 1',
+        whereArgs: [nowStr],
+      );
+
+      // 2. Eliminar los PDFs asociados a esas asignaturas desactivadas
+      await db.execute(
+        '''
+        DELETE FROM table_pdf_documents 
+        WHERE subject_id IN (
+          SELECT id FROM table_subjects WHERE exam_date <= ?
+        )
+      ''',
+        [nowStr],
+      );
+    } catch (e) {
+      throw DatabaseException(
+        message: 'Error al desactivar asignaturas vencidas: $e',
+      );
     }
   }
 
@@ -401,21 +491,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al actualizar asignatura: $e');
-    }
-  }
-
-  @override
-  Future<int> getTodayAnsweredCount() async {
-    try {
-      final db = await appDatabase.database;
-      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
-      final result = await db.rawQuery(
-        'SELECT COUNT(*) as total FROM table_study_logs WHERE substr(answered_at, 1, 10) = ?',
-        [todayStr],
-      );
-      return Sqflite.firstIntValue(result) ?? 0;
-    } catch (e) {
-      throw DatabaseException(message: 'Error al obtener conteo diario: $e');
     }
   }
 }

@@ -18,11 +18,13 @@ import 'package:study_blocker/domain/usecases/extract_text_from_pdf.dart';
 import 'package:study_blocker/domain/usecases/generate_quiz_with_ai.dart';
 import 'package:study_blocker/domain/usecases/get_random_question.dart';
 import 'package:study_blocker/domain/usecases/get_user_study_streak.dart';
+import 'package:study_blocker/domain/usecases/parse_questions_from_pdf.dart';
 import 'package:study_blocker/presentation/auth/bloc/auth_bloc.dart';
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_bloc.dart';
 import 'package:study_blocker/presentation/quiz_overlay/bloc/quiz_bloc.dart';
 import 'package:study_blocker/presentation/study_management/bloc/app_selection/app_selection_bloc.dart';
 import 'package:study_blocker/presentation/study_management/bloc/pdf_upload_bloc.dart';
+import 'package:study_blocker/presentation/study_management/bloc/study_goal/study_goal_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -37,6 +39,9 @@ class _MockQuestionLocalDataSource implements QuestionLocalDataSource {
 
   @override
   Future<void> deleteSubject(int id) async {}
+
+  @override
+  Future<void> deactivateExpiredSubjects() async {}
 
   @override
   Future<void> updateQuestionReviewData({
@@ -178,12 +183,17 @@ Future<void> init() async {
   );
   sl.registerFactory(() => AuthBloc(localConfig: sl()));
   sl.registerFactory(() => AppSelectionBloc(repository: sl()));
+  sl.registerLazySingleton(() => const ParseQuestionsFromPdf());
   sl.registerFactory(
     () => PdfUploadBloc(
       localConfig: sl(),
       questionLocalDataSource: sl(),
       extractTextFromPdf: sl(),
       generateQuizWithAi: sl(),
+      parseQuestionsFromPdf: sl(),
     ),
+  );
+  sl.registerFactory(
+    () => StudyGoalBloc(localConfig: sl(), questionLocalDataSource: sl()),
   );
 }

@@ -1,22 +1,22 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:study_blocker/core/errors/exceptions.dart';
 import 'package:study_blocker/data/datasources/local/app_config_local_datasource.dart';
 import 'package:study_blocker/data/datasources/local/question_local_datasource.dart';
 import 'package:study_blocker/domain/usecases/extract_text_from_pdf.dart';
 import 'package:study_blocker/domain/usecases/generate_quiz_with_ai.dart';
+import 'package:study_blocker/domain/usecases/parse_questions_from_pdf.dart';
 import 'pdf_upload_event.dart';
 import 'pdf_upload_state.dart';
 
 class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
-  final AppConfigLocalDataSource localConfig; // Para verificar isVip
+  final AppConfigLocalDataSource localConfig;
   final QuestionLocalDataSource questionLocalDataSource;
   final ExtractTextFromPdf extractTextFromPdf;
   final GenerateQuizWithAi generateQuizWithAi;
+  final ParseQuestionsFromPdf parseQuestionsFromPdf; // ✅ NUEVO
 
-  // Límites del Plan Free
-  static const int maxActiveSubjectsFree =
-      2; // Solo se permite estudiar/tener activas 2 asignaturas a la vez
-  static const int maxPdfsPerSubjectFree =
-      1; // Máximo de 1 PDF por cada asignatura
+  static const int maxActiveSubjectsFree = 2;
+  static const int maxPdfsPerSubjectFree = 1;
   static const int maxPagesFree = 10;
   static const int maxMbSize = 10;
 
@@ -25,6 +25,7 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
     required this.questionLocalDataSource,
     required this.extractTextFromPdf,
     required this.generateQuizWithAi,
+    required this.parseQuestionsFromPdf, // ✅ NUEVO
   }) : super(const PdfUploadState()) {
     on<InitializePdfUpload>(_onInitialize);
     on<SubjectNameChanged>(_onSubjectNameChanged);
@@ -41,6 +42,7 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
     emit(state.copyWith(status: PdfUploadStatus.loading));
     try {
       final isVip = await localConfig.isVipUser();
+      await questionLocalDataSource.deactivateExpiredSubjects();
       emit(state.copyWith(status: PdfUploadStatus.initial, isVip: isVip));
     } catch (_) {
       emit(state.copyWith(status: PdfUploadStatus.initial, isVip: false));
@@ -59,7 +61,6 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
   }
 
   void _onPdfFileSelected(PdfFileSelected event, Emitter<PdfUploadState> emit) {
-    // Validación 1: Tamaño
     if (event.fileSizeMb > maxMbSize) {
       emit(
         state.copyWith(
@@ -70,13 +71,12 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
       return;
     }
 
-    // Validación 2: Páginas (Si es Free)
     if (!state.isVip && event.pageCount > maxPagesFree) {
       emit(
         state.copyWith(
           status: PdfUploadStatus.error,
           errorMessage:
-              'El PDF supera las $maxPagesFree páginas permitidas en el plan gratuito. Actualiza a VIP o utiliza un PDF más corto.',
+              'El PDF supera las $maxPagesFree páginas permitidas en el plan gratuito.',
           fileName: null,
           filePath: null,
         ),
@@ -100,7 +100,6 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
     Emitter<PdfUploadState> emit,
   ) async {
     if (!state.isFormValid) return;
-
     emit(state.copyWith(status: PdfUploadStatus.loading));
 
     try {
@@ -112,20 +111,7 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
             state.copyWith(
               status: PdfUploadStatus.error,
               errorMessage:
-                  'Has alcanzado el límite de $maxActiveSubjectsFree asignaturas activas simultáneamente. Desactiva otra asignatura o actualiza a VIP para poder estudiar esta.',
-            ),
-          );
-          return;
-        }
-
-        final int currentPdfsInSubject = await questionLocalDataSource
-            .countPdfsForSubject(state.subjectName);
-        if (currentPdfsInSubject >= maxPdfsPerSubjectFree) {
-          emit(
-            state.copyWith(
-              status: PdfUploadStatus.error,
-              errorMessage:
-                  'En el plan gratuito solo puedes tener $maxPdfsPerSubjectFree PDF por asignatura. Actualiza a VIP para añadir más material aquí.',
+                  'Has alcanzado el límite de $maxActiveSubjectsFree asignaturas activas simultáneamente.',
             ),
           );
           return;
@@ -135,12 +121,12 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
       final filePath = state.filePath;
       final pageCount = state.pageCount;
       final examDate = state.examDate;
+
       if (filePath == null || pageCount == null || examDate == null) {
         emit(
           state.copyWith(
             status: PdfUploadStatus.error,
-            errorMessage:
-                'No se pudieron guardar los datos del PDF. Faltan campos obligatorios.',
+            errorMessage: 'Faltan campos obligatorios.',
           ),
         );
         return;
@@ -153,17 +139,87 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
         pageCount: pageCount,
       );
 
+      // ✅ DECISIÓN AUTOMÁTICA: Si es Free, ejecutar parser local inmediatamente
+      if (!state.isVip) {
+        final textResult = await extractTextFromPdf(
+          ExtractTextFromPdfParams(pdfPath: filePath),
+        );
+
+        await textResult.fold(
+          (failure) {
+            // Si falla la extracción de texto, igual el PDF se guardó
+            emit(
+              state.copyWith(
+                status: PdfUploadStatus.success,
+                errorMessage:
+                    'PDF guardado, pero no se pudieron extraer preguntas: ${failure.message}',
+              ),
+            );
+          },
+          (pdfText) async {
+            final parseResult = await parseQuestionsFromPdf(
+              ParseQuestionsParams(
+                pdfText: pdfText,
+                subject: state.subjectName,
+              ),
+            );
+
+            await parseResult.fold(
+              (failure) {
+                emit(
+                  state.copyWith(
+                    status: PdfUploadStatus.success,
+                    errorMessage:
+                        'PDF guardado. ${failure.message}', // Mensaje de guía de formato
+                  ),
+                );
+              },
+              (questions) async {
+                await questionLocalDataSource.insertQuestions(questions);
+                emit(
+                  state.copyWith(
+                    status: PdfUploadStatus.success,
+                    errorMessage:
+                        '¡Éxito! PDF guardado y ${questions.length} preguntas extraídas.',
+                  ),
+                );
+              },
+            );
+          },
+        );
+        return;
+      }
+
+      // Si es VIP, solo guardamos (el VIP usará el otro botón para IA)
       emit(
         state.copyWith(
           status: PdfUploadStatus.success,
           errorMessage: 'PDF guardado exitosamente.',
         ),
       );
+    } on DatabaseException catch (e) {
+      if (e.message == 'PDF_ALREADY_REPLACED') {
+        emit(
+          state.copyWith(
+            status: PdfUploadStatus.error,
+            errorMessage:
+                'Ya has reemplazado el PDF de esta asignatura una vez. No puedes cambiarlo hasta que llegue la fecha del examen.',
+          ),
+        );
+        return;
+      }
+
+      emit(
+        state.copyWith(
+          status: PdfUploadStatus.error,
+          errorMessage: 'Error al guardar: ${e.message}',
+        ),
+      );
     } catch (e) {
       emit(
         state.copyWith(
           status: PdfUploadStatus.error,
-          errorMessage: 'Error al guardar: $e',
+          errorMessage: 'Error inesperado: $e',
         ),
       );
     }
@@ -174,11 +230,10 @@ class PdfUploadBloc extends Bloc<PdfUploadEvent, PdfUploadState> {
     Emitter<PdfUploadState> emit,
   ) async {
     if (!state.isVip) {
-      // El BLoC bloquea procesar si no es VIP por seguridad
       emit(
         state.copyWith(
           status: PdfUploadStatus.error,
-          errorMessage: 'REQUIRES_SUBSCRIPTION', // Flag para que la UI navegue
+          errorMessage: 'REQUIRES_SUBSCRIPTION',
         ),
       );
       return;

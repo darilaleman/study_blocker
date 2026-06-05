@@ -13,26 +13,21 @@ class DashboardLoading extends DashboardState {}
 
 class DashboardLoaded extends DashboardState {
   final int currentStreak;
-  final int questionsAnswered; // Mapeado de todayAnsweredCount
-  final int studyTimeMinutes; // Propiedad añadida
+  final int questionsAnswered;
+  final bool studiedToday; // Nuevo: Indica si ya cumplió hoy (tipo Duolingo)
 
   const DashboardLoaded({
     required this.currentStreak,
     required this.questionsAnswered,
-    required this.studyTimeMinutes,
+    required this.studiedToday,
   });
 
   @override
-  List<Object?> get props => [
-    currentStreak,
-    questionsAnswered,
-    studyTimeMinutes,
-  ];
+  List<Object?> get props => [currentStreak, questionsAnswered, studiedToday];
 }
 
 class DashboardError extends DashboardState {
   final String message;
-
   const DashboardError({required this.message});
 
   @override

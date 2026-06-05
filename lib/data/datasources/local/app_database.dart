@@ -20,10 +20,10 @@ class AppDatabase {
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, filePath);
 
-      // Incrementamos la versión a 2 para incluir la nueva tabla
+      // ✅ VERSIÓN ACTUALIZADA A 3
       return await openDatabase(
         path,
-        version: 2,
+        version: 3,
         onCreate: _createDB,
         onUpgrade: _onUpgrade,
       );
@@ -46,7 +46,8 @@ class AppDatabase {
         name $textType,
         exam_date $textType,
         created_at $textType,
-        is_active $intType DEFAULT 0
+        is_active $intType DEFAULT 0,
+        pdf_replaced $intType DEFAULT 0
       )
     ''');
 
@@ -66,11 +67,11 @@ class AppDatabase {
         id $idType,
         subject_id INTEGER,
         question $textType,
-        options $textType,       
+        options $textType,
         correct_answer $textType,
-        subject $textType,          
-        next_review $textType,    
-        interval $intType,        
+        subject $textType,
+        next_review $textType,
+        interval $intType,
         ease_factor $realType,
         repetitions $intType,
         FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
@@ -81,13 +82,12 @@ class AppDatabase {
       CREATE TABLE table_study_logs (
         id $idType,
         question_id $intType,
-        is_correct $intType,       
-        answered_at $textType,    
+        is_correct $intType,
+        answered_at $textType,
         FOREIGN KEY (question_id) REFERENCES table_questions (id) ON DELETE CASCADE
       )
     ''');
 
-    // 5. NUEVA TABLA: Bloqueo de aplicaciones por asignatura
     await db.execute('''
       CREATE TABLE table_blocked_apps (
         id $idType,
@@ -98,7 +98,6 @@ class AppDatabase {
     ''');
   }
 
-  // Manejo de migración para usuarios existentes
   FutureOr<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
@@ -109,6 +108,13 @@ class AppDatabase {
           FOREIGN KEY (subject_id) REFERENCES table_subjects (id) ON DELETE CASCADE
         )
       ''');
+    }
+
+    // ✅ NUEVA MIGRACIÓN: Añade la columna para controlar el reemplazo único del PDF
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE table_subjects ADD COLUMN pdf_replaced INTEGER DEFAULT 0',
+      );
     }
   }
 }

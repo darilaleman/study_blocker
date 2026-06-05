@@ -16,8 +16,49 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
   List<Map<String, dynamic>> _subjects = [];
   List<AppInfo> _installedApps = [];
   final Set<String> _selectedPackageNames = {};
-
   int? _currentSubjectId;
+
+  // ✅ LISTA NEGRA DE APPS CRÍTICAS DEL SISTEMA
+  static const List<String> _criticalAppPrefixes = [
+    'com.android.settings',
+    'com.android.systemui',
+    'com.google.android.gms',
+    'com.google.android.gsf',
+    'com.android.phone',
+    'com.android.dialer',
+    'com.google.android.dialer',
+    'com.android.incallui',
+    'com.google.android.packageinstaller',
+    'com.sec.android',
+    'com.miui',
+    'com.huawei',
+    'com.google.android.googlequicksearchbox',
+  ];
+
+  /// Verifica si una app es segura para ser bloqueada por el usuario
+  bool _isAppSafeToBlock(AppInfo app) {
+    // ✅ NORMALIZACIÓN: minúsculas y reemplaza guiones bajos por espacios.
+    // Esto captura tanto "study_blocker" como "Study Blocker" sin fallar.
+    final lowerName = app.name.toLowerCase().replaceAll('_', ' ').trim();
+    final lowerPackage = app.packageName.toLowerCase();
+
+    // 1. Bloquear explícitamente nuestra propia app por nombre o por paquete
+    if (lowerPackage.contains('study_blocker') ||
+        lowerPackage.contains('dopamind') ||
+        lowerName.contains('study blocker') ||
+        lowerName.contains('dopamind')) {
+      return false;
+    }
+
+    // 2. Verificación por prefijos para apps críticas del sistema operativo
+    for (final prefix in _criticalAppPrefixes) {
+      if (lowerPackage.startsWith(prefix.toLowerCase())) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   @override
   void initState() {
@@ -27,16 +68,20 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
 
   Future<void> _loadData() async {
     final subjects = await _subjectDatasource.getAllSubjects();
-    List<AppInfo> apps = await InstalledApps.getInstalledApps(
+
+    // Obtenemos todas las apps instaladas
+    List<AppInfo> allApps = await InstalledApps.getInstalledApps(
       excludeSystemApps: true,
       withIcon: true,
     );
 
+    // ✅ APLICAMOS EL FILTRO DE SEGURIDAD Y LIMPIEZA
+    List<AppInfo> safeApps = allApps.where(_isAppSafeToBlock).toList();
+
     setState(() {
       _subjects = subjects;
-      _installedApps = apps;
+      _installedApps = safeApps; // Usamos la lista ya filtrada
       if (subjects.isNotEmpty) {
-        // Seleccionamos el primero si no hay uno seleccionado
         _currentSubjectId ??= subjects.first['id'];
         _loadBlockedApps(_currentSubjectId!);
       }
@@ -98,9 +143,8 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
             onPressed: () async {
               final ctx = context;
               final name = controller.text.trim();
-              if (name.isEmpty) {
-                return;
-              }
+              if (name.isEmpty) return;
+
               final exists = _subjects.any(
                 (s) => s['name'].toLowerCase() == name.toLowerCase(),
               );
@@ -112,13 +156,12 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
                 }
                 return;
               }
+
               await _subjectDatasource.createSubject(
                 name: name,
                 isActive: false,
               );
-              if (mounted) {
-                Navigator.pop(ctx);
-              }
+              if (mounted) Navigator.pop(ctx);
               _loadData();
             },
             child: const Text("Crear"),
@@ -139,24 +182,34 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
           IconButton(
             icon: const Icon(Icons.save, color: Colors.white),
             onPressed: _saveSettings,
+            tooltip: "Guardar cambios de bloqueo",
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateSubjectDialog,
-        backgroundColor: Colors.blueAccent,
-        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            "Mis Asignaturas",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Mis Asignaturas",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.add_circle,
+                  color: Colors.blueAccent,
+                  size: 32,
+                ),
+                onPressed: _showCreateSubjectDialog,
+                tooltip: "Crear nueva asignatura",
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           ..._subjects.map(
@@ -217,15 +270,17 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
             ),
           ),
           const SizedBox(height: 10),
+
+          // ✅ LISTA DE APPS LIMPIA Y FILTRADA
           ..._installedApps.map(
             (app) => CheckboxListTile(
               title: Text(
                 app.name,
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.white, fontSize: 15),
               ),
               secondary: app.icon != null
-                  ? Image.memory(app.icon!, width: 30)
-                  : null,
+                  ? Image.memory(app.icon!, width: 30, height: 30)
+                  : const Icon(Icons.android, color: Colors.white54, size: 30),
               value: _selectedPackageNames.contains(app.packageName),
               onChanged: (bool? selected) {
                 setState(() {
@@ -236,6 +291,8 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
                   }
                 });
               },
+              activeColor: Colors.blueAccent,
+              checkColor: Colors.white,
             ),
           ),
         ],

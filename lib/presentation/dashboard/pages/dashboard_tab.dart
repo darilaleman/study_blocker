@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:study_blocker/core/constants/app_constants.dart';
+import 'package:study_blocker/data/datasources/local/question_local_datasource.dart';
+import 'package:study_blocker/injection_container.dart' as di;
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_bloc.dart';
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_event.dart';
 import 'package:study_blocker/presentation/dashboard/bloc/dashboard_state.dart';
@@ -13,18 +15,56 @@ class DashboardTab extends StatefulWidget {
 }
 
 class _DashboardTabState extends State<DashboardTab> {
+  final QuestionLocalDataSource _localDataSource = di
+      .sl<QuestionLocalDataSource>();
+
+  List<Map<String, dynamic>> _activeSubjectsData = [];
+  bool _isLoadingSubjects = true;
+
   @override
   void initState() {
     super.initState();
+    _loadDashboardData();
     context.read<DashboardBloc>().add(LoadDashboardMetrics());
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Método que carga tus asignaturas en el Dashboard
-    });
+  /// Carga las asignaturas activas y verifica si tienen PDF cargado
+  Future<void> _loadDashboardData() async {
+    setState(() => _isLoadingSubjects = true);
+    try {
+      final allSubjects = await _localDataSource.getAllSubjects();
+      final active = allSubjects.where((s) => s['is_active'] == 1).toList();
+
+      final enrichedData = <Map<String, dynamic>>[];
+      for (var subject in active) {
+        final pdfCount = await _localDataSource.countPdfsForSubject(
+          subject['name'],
+        );
+        enrichedData.add({...subject, 'hasPdf': pdfCount > 0});
+      }
+
+      if (mounted) {
+        setState(() {
+          _activeSubjectsData = enrichedData;
+          _isLoadingSubjects = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al cargar datos del dashboard: $e');
+      if (mounted) {
+        setState(() => _isLoadingSubjects = false);
+      }
+    }
+  }
+
+  String _formatDate(String? isoDate) {
+    if (isoDate == null) return 'Sin fecha';
+    try {
+      final date = DateTime.parse(isoDate);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    } catch (_) {
+      return 'Sin fecha';
+    }
   }
 
   @override
@@ -34,43 +74,190 @@ class _DashboardTabState extends State<DashboardTab> {
       appBar: AppBar(
         title: const Text(
           'Dopamind Dashboard',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         backgroundColor: const Color(0xff1e293b),
         elevation: 0,
       ),
       body: RefreshIndicator(
         color: AppConstants.primaryColor,
-        onRefresh: () async =>
-            context.read<DashboardBloc>().add(LoadDashboardMetrics()),
+        onRefresh: () async {
+          await _loadDashboardData();
+          if (mounted) {
+            context.read<DashboardBloc>().add(LoadDashboardMetrics());
+          }
+        },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Aquí iría tu lógica de métricas (BlocBuilder)
+              // 🏆 TARJETA DE RACHA (Compactada)
               BlocBuilder<DashboardBloc, DashboardState>(
                 builder: (context, state) {
                   if (state is DashboardLoading) {
                     return const Center(
-                      child: CircularProgressIndicator(
-                        color: AppConstants.accentColor,
+                      child: Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: CircularProgressIndicator(
+                          color: AppConstants.accentColor,
+                        ),
                       ),
                     );
                   }
-                  // Aquí renderizas tus métricas basadas en el estado
-                  return const SizedBox();
+
+                  if (state is DashboardLoaded) {
+                    final bool studiedToday = state.questionsAnswered > 0;
+
+                    return Card(
+                      color: const Color(0xff1e293b),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: studiedToday
+                              ? Colors.orange.withValues(alpha: 0.5)
+                              : Colors.transparent,
+                          width: studiedToday ? 2 : 0,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14.0),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.local_fire_department_rounded,
+                              size: 36,
+                              color: studiedToday
+                                  ? Colors.orange
+                                  : Colors.grey[600],
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Racha de estudio',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${state.currentStreak} días',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    studiedToday
+                                        ? '¡Objetivo de hoy cumplido! 🎯'
+                                        : 'Responde 1 pregunta para mantenerla',
+                                    style: TextStyle(
+                                      color: studiedToday
+                                          ? Colors.orange[300]
+                                          : Colors.grey[500],
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
                 },
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
 
-              // Botones de acción rápida
+              // 📌 MURAL DE ASIGNATURAS ACTIVAS
+              const Text(
+                'Tus Objetivos de Estudio',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              _isLoadingSubjects
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: CircularProgressIndicator(
+                          color: AppConstants.primaryColor,
+                        ),
+                      ),
+                    )
+                  : _activeSubjectsData.isEmpty
+                  ? Card(
+                      color: const Color(0xff1e293b),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.school_outlined,
+                              size: 36,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'No tienes asignaturas activas',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Ve a la pestaña "Gestión" para activar una asignatura y cargar tu material.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : Column(
+                      children: _activeSubjectsData.map((data) {
+                        return _buildMuralCard(data);
+                      }).toList(),
+                    ),
+
+              const SizedBox(height: 20),
+
+              // 🚀 Botones de acción rápida (Compactados)
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppConstants.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -78,22 +265,26 @@ class _DashboardTabState extends State<DashboardTab> {
                 onPressed: () => Navigator.of(
                   context,
                 ).pushNamed(AppConstants.routeQuizOverlay),
-                icon: const Icon(Icons.school_rounded, color: Colors.white),
+                icon: const Icon(
+                  Icons.school_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 label: const Text(
                   'Estudiar Voluntariamente',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -102,24 +293,128 @@ class _DashboardTabState extends State<DashboardTab> {
                     width: 2,
                   ),
                 ),
-                onPressed: () => Navigator.of(
-                  context,
-                ).pushNamed(AppConstants.routePdfUpload),
+                onPressed: () async {
+                  await _loadDashboardData();
+                  if (!mounted) return;
+
+                  Navigator.of(context).pushNamed(
+                    AppConstants.routePdfUpload,
+                    arguments: _activeSubjectsData,
+                  );
+                },
                 icon: const Icon(
                   Icons.picture_as_pdf_rounded,
                   color: AppConstants.textPrimary,
+                  size: 20,
                 ),
                 label: const Text(
                   'Cargar Material PDF',
                   style: TextStyle(
                     color: AppConstants.textPrimary,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Construye una tarjeta individual para el mural de asignaturas
+  Widget _buildMuralCard(Map<String, dynamic> data) {
+    final String name = data['name'] ?? 'Sin nombre';
+    final String dateStr = _formatDate(data['exam_date']);
+    final bool hasPdf = data['hasPdf'] ?? false;
+
+    return Card(
+      color: const Color(0xff1e293b),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: hasPdf
+              ? Colors.green.withValues(alpha: 0.3)
+              : Colors.orange.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14.0),
+        child: Row(
+          children: [
+            // Icono decorativo lateral
+            Container(
+              width: 4,
+              height: 48,
+              decoration: BoxDecoration(
+                color: hasPdf ? Colors.green : Colors.orange,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Nombre de la asignatura
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  // Fecha del examen
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.event_rounded,
+                        size: 14,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Examen: $dateStr',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Estado del PDF
+                  Row(
+                    children: [
+                      Icon(
+                        hasPdf
+                            ? Icons.check_circle_rounded
+                            : Icons.warning_amber_rounded,
+                        size: 14,
+                        color: hasPdf ? Colors.green : Colors.orange,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        hasPdf
+                            ? 'Material PDF cargado y listo'
+                            : 'Falta cargar el material PDF',
+                        style: TextStyle(
+                          color: hasPdf
+                              ? Colors.green[300]
+                              : Colors.orange[300],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
