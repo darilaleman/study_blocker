@@ -1,246 +1,692 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:installed_apps/installed_apps.dart';
+import 'package:installed_apps/app_info.dart';
+import 'package:pdf_text/pdf_text.dart';
+import 'package:study_blocker/core/constants/app_constants.dart';
 import 'package:study_blocker/data/datasources/local/question_local_datasource.dart';
-import 'package:study_blocker/domain/entities/question.dart';
 import 'package:study_blocker/injection_container.dart';
-import 'package:study_blocker/presentation/quiz_overlay/widgets/question_card.dart';
 
-class StudyMaterialScreen extends StatefulWidget {
-  const StudyMaterialScreen({super.key});
+class ManageSubjectsTab extends StatefulWidget {
+  const ManageSubjectsTab({super.key});
 
   @override
-  State<StudyMaterialScreen> createState() => _StudyMaterialScreenState();
+  State<ManageSubjectsTab> createState() => _ManageSubjectsTabState();
 }
 
-class _StudyMaterialScreenState extends State<StudyMaterialScreen> {
-  final QuestionLocalDataSource _questionLocalDataSource = sl();
-  bool _isLoading = true;
+class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
+  final QuestionLocalDataSource _datasource = sl();
+
   List<Map<String, dynamic>> _subjects = [];
-  List<Question> _questions = [];
+  List<AppInfo> _installedApps = [];
+  bool _isLoading = true;
+
+  // Lista negra de apps que no deben aparecer
+  static const List<String> _criticalAppPrefixes = [
+    'com.android.settings',
+    'com.android.systemui',
+    'com.google.android.gms',
+    'com.google.android.gsf',
+    'com.android.phone',
+    'com.android.dialer',
+    'com.google.android.dialer',
+    'com.android.incallui',
+    'com.google.android.packageinstaller',
+    'com.sec.android',
+    'com.miui',
+    'com.huawei',
+    'com.google.android.googlequicksearchbox',
+  ];
+
+  bool _isAppSafeToBlock(AppInfo app) {
+    final lowerName = app.name.toLowerCase().replaceAll('_', ' ').trim();
+    final lowerPackage = app.packageName.toLowerCase();
+
+    // No mostrar la propia app
+    if (lowerPackage.contains('study_blocker') ||
+        lowerPackage.contains('dopamind') ||
+        lowerName.contains('study blocker') ||
+        lowerName.contains('dopamind')) {
+      return false;
+    }
+
+    // No mostrar apps críticas del sistema
+    for (final prefix in _criticalAppPrefixes) {
+      if (lowerPackage.startsWith(prefix)) return false;
+    }
+
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadStudyData();
+    _loadData();
   }
 
-  Future<void> _loadStudyData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     try {
-      final subjects = await _questionLocalDataSource.getAllSubjects();
-      final questions = await _questionLocalDataSource.getAllQuestions();
+      final subjects = await _datasource.getAllSubjects();
+      final allApps = await InstalledApps.getInstalledApps(
+        excludeSystemApps: true,
+        withIcon: true,
+      );
+      final safeApps = allApps.where(_isAppSafeToBlock).toList();
 
-      setState(() {
-        _subjects = subjects;
-        _questions = questions;
-      });
-    } catch (_) {
-      setState(() {
-        _subjects = [];
-        _questions = [];
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _subjects = subjects;
+          _installedApps = safeApps;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al cargar datos: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  List<String> get _tabs {
-    return ['Todos', ..._subjects.map((subject) => subject['name'] as String)];
+  Future<void> _toggleSubjectActive(int id, bool isActive) async {
+    if (isActive) {
+      final count = await _datasource.countActiveSubjects();
+      if (count >= 2) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Máximo 2 asignaturas activas en versión gratuita"),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    await _datasource.updateSubjectActive(id, isActive);
+    _loadData();
   }
 
-  List<Question> _getFilteredQuestions(String subject) {
-    if (subject == 'Todos') return _questions;
-    return _questions.where((q) => q.subject == subject).toList();
+  Future<void> _deleteSubject(int id) async {
+    await _datasource.deleteSubject(id);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Asignatura eliminada")));
+    }
+    _loadData();
   }
 
-  void _showQuestionDetailsBottomSheet(Question question) {
-    showModalBottomSheet(
+  // ✅ NUEVO: Diálogo unificado para crear asignatura con todo el flujo
+  Future<void> _showCreateSubjectFlow() async {
+    final nameController = TextEditingController();
+    DateTime? selectedDate;
+    String? pdfPath;
+    String? pdfName;
+    int? pdfPageCount;
+    final Set<String> selectedApps = {};
+
+    await showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        final theme = Theme.of(context);
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          minChildSize: 0.4,
-          expand: false,
-          builder: (context, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: const Color(0xff1e293b),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xff0f172a),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                      const Icon(
+                        Icons.add_circle,
+                        color: Colors.blueAccent,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
                         child: Text(
-                          question.subject,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
+                          'Nueva Asignatura',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                      Text(
-                        'Repeticiones: ${question.repetitions}',
-                        style: theme.textTheme.bodySmall,
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    question.question,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Opciones de Respuesta:',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...question.options.map((option) {
-                    final isCorrect = option == question.correctAnswer;
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: isCorrect
-                            ? Colors.green.withValues(alpha: 0.08)
-                            : theme.colorScheme.surface.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: isCorrect
-                              ? Colors.green
-                              : theme.colorScheme.outlineVariant,
-                          width: isCorrect ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isCorrect
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                            color: isCorrect
-                                ? Colors.green
-                                : theme.colorScheme.onSurfaceVariant,
-                            size: 20,
+                ),
+
+                // Contenido scrollable
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 1. Nombre
+                        const Text(
+                          '1. Nombre de la asignatura',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              option,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: isCorrect
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: nameController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            hintText: 'Ej: Matemáticas',
+                            hintStyle: TextStyle(color: Colors.white54),
+                            filled: true,
+                            fillColor: Color(0xff0f172a),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(12),
                               ),
                             ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // 2. Fecha de examen
+                        const Text(
+                          '2. Fecha del examen',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now().add(
+                                const Duration(days: 7),
+                              ),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
+                            );
+                            if (picked != null) {
+                              setDialogState(() => selectedDate = picked);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff0f172a),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_today,
+                                  color: Colors.white54,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    selectedDate == null
+                                        ? 'Seleccionar fecha'
+                                        : '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}',
+                                    style: TextStyle(
+                                      color: selectedDate == null
+                                          ? Colors.white54
+                                          : Colors.white,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // 3. PDF
+                        const Text(
+                          '3. Material PDF',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () async {
+                            final result = await FilePicker.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: ['pdf'],
+                            );
+                            if (result != null) {
+                              final file = result.files.first;
+                              int pages = 0;
+                              if (file.path != null) {
+                                try {
+                                  final doc = await PDFDoc.fromPath(file.path!);
+                                  pages = doc.length;
+                                } catch (_) {}
+                              }
+                              setDialogState(() {
+                                pdfPath = file.path;
+                                pdfName = file.name;
+                                pdfPageCount = pages;
+                              });
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: pdfPath != null
+                                  ? AppConstants.primaryColor.withValues(
+                                      alpha: 0.1,
+                                    )
+                                  : const Color(0xff0f172a),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: pdfPath != null
+                                    ? AppConstants.primaryColor
+                                    : Colors.white38,
+                                width: pdfPath != null ? 2 : 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  pdfPath != null
+                                      ? Icons.picture_as_pdf
+                                      : Icons.cloud_upload,
+                                  size: 28,
+                                  color: pdfPath != null
+                                      ? AppConstants.primaryColor
+                                      : Colors.white70,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        pdfName ?? 'Toca para seleccionar PDF',
+                                        style: TextStyle(
+                                          color: pdfPath != null
+                                              ? AppConstants.primaryColor
+                                              : Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      if (pdfPath != null)
+                                        Text(
+                                          '$pdfPageCount páginas',
+                                          style: const TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // 4. Apps a bloquear
+                        const Text(
+                          '4. Apps a bloquear (opcional)',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 150,
+                          decoration: BoxDecoration(
+                            color: const Color(0xff0f172a),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: _installedApps.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'Cargando apps...',
+                                    style: TextStyle(color: Colors.white54),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: _installedApps.length,
+                                  itemBuilder: (context, index) {
+                                    final app = _installedApps[index];
+                                    final isSelected = selectedApps.contains(
+                                      app.packageName,
+                                    );
+                                    return CheckboxListTile(
+                                      title: Text(
+                                        app.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      secondary: app.icon != null
+                                          ? Image.memory(
+                                              app.icon!,
+                                              width: 24,
+                                              height: 24,
+                                            )
+                                          : const Icon(
+                                              Icons.android,
+                                              color: Colors.white54,
+                                              size: 24,
+                                            ),
+                                      value: isSelected,
+                                      onChanged: (val) {
+                                        setDialogState(() {
+                                          if (val == true) {
+                                            selectedApps.add(app.packageName);
+                                          } else {
+                                            selectedApps.remove(
+                                              app.packageName,
+                                            );
+                                          }
+                                        });
+                                      },
+                                      activeColor: Colors.blueAccent,
+                                      checkColor: Colors.white,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                          ),
+                                      dense: true,
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Botón de guardar
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xff0f172a),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed:
+                          (nameController.text.trim().isNotEmpty &&
+                              selectedDate != null &&
+                              pdfPath != null)
+                          ? () async {
+                              try {
+                                // Guardar asignatura y PDF
+                                await _datasource.saveSubjectAndPdf(
+                                  subjectName: nameController.text.trim(),
+                                  examDate: selectedDate!,
+                                  filePath: pdfPath!,
+                                  pageCount: pdfPageCount ?? 0,
+                                );
+
+                                // Obtener ID de la asignatura recién creada
+                                final subjects = await _datasource
+                                    .getAllSubjects();
+                                final newSubject = subjects.firstWhere(
+                                  (s) =>
+                                      s['name'] == nameController.text.trim(),
+                                );
+                                final subjectId = newSubject['id'] as int;
+
+                                // Guardar apps bloqueadas
+                                if (selectedApps.isNotEmpty) {
+                                  await _datasource.saveBlockedApps(
+                                    subjectId,
+                                    selectedApps.toList(),
+                                  );
+                                }
+
+                                if (mounted) {
+                                  Navigator.pop(context); // Cerrar diálogo
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Asignatura creada exitosamente',
+                                      ),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                  _loadData(); // Recargar lista
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error al crear: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppConstants.primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    );
-                  }),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                      child: const Text(
+                        'Crear Asignatura',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final scaffold = Scaffold(
+    return Scaffold(
+      backgroundColor: const Color(0xff0f172a),
       appBar: AppBar(
-        title: const Text(
-          'Material de Estudio',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        bottom: _isLoading || _tabs.isEmpty
-            ? null
-            : TabBar(
-                isScrollable: true,
-                tabs: _tabs.map((subject) => Tab(text: subject)).toList(),
-              ),
+        title: const Text("Gestionar", style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xff1e293b),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _tabs.isEmpty
           ? const Center(
-              child: Text(
-                'No hay materias registradas. Añade un PDF desde el Dashboard.',
-                textAlign: TextAlign.center,
+              child: CircularProgressIndicator(
+                color: AppConstants.primaryColor,
               ),
             )
-          : TabBarView(
-              children: _tabs.map((subject) {
-                final questions = _getFilteredQuestions(subject);
-
-                if (questions.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No hay preguntas generadas para esta categoría.',
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: questions.length,
-                  itemBuilder: (context, index) {
-                    final question = questions[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: QuestionCard(
-                        question: question,
-                        onTap: () => _showQuestionDetailsBottomSheet(question),
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Header con botón de crear
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Mis Asignaturas",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  },
-                );
-              }).toList(),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _showCreateSubjectFlow,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text(
+                        'Nueva',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppConstants.primaryColor,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Lista de asignaturas
+                if (_subjects.isEmpty)
+                  Card(
+                    color: const Color(0xff1e293b),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.school_outlined,
+                            size: 48,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'No hay asignaturas creadas',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Toca "Nueva" para crear tu primera asignatura',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ..._subjects.map(
+                    (s) => Card(
+                      color: const Color(0xff1e293b),
+                      child: ListTile(
+                        title: Text(
+                          s['name'],
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          s['is_active'] == 1 ? 'Activa' : 'Inactiva',
+                          style: TextStyle(
+                            color: s['is_active'] == 1
+                                ? Colors.green
+                                : Colors.grey,
+                            fontSize: 12,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Switch(
+                              value: s['is_active'] == 1,
+                              onChanged: (val) =>
+                                  _toggleSubjectActive(s['id'], val),
+                              activeColor: Colors.green,
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete,
+                                color: Colors.redAccent,
+                              ),
+                              onPressed: () => _deleteSubject(s['id']),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 20),
+                const Divider(color: Colors.white24),
+                const SizedBox(height: 12),
+
+                // Sección de apps bloqueadas (informativa)
+                const Text(
+                  "Apps bloqueadas",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Las apps se seleccionan al crear una nueva asignatura',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                ),
+              ],
             ),
     );
-
-    if (_isLoading || _tabs.isEmpty) {
-      return scaffold;
-    }
-
-    return DefaultTabController(length: _tabs.length, child: scaffold);
   }
 }

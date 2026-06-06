@@ -28,7 +28,6 @@ class _DashboardTabState extends State<DashboardTab> {
     context.read<DashboardBloc>().add(LoadDashboardMetrics());
   }
 
-  /// Carga las asignaturas activas y verifica si tienen PDF cargado
   Future<void> _loadDashboardData() async {
     setState(() => _isLoadingSubjects = true);
     try {
@@ -40,7 +39,11 @@ class _DashboardTabState extends State<DashboardTab> {
         final pdfCount = await _localDataSource.countPdfsForSubject(
           subject['name'],
         );
-        enrichedData.add({...subject, 'hasPdf': pdfCount > 0});
+        enrichedData.add({
+          ...subject,
+          'hasPdf': pdfCount > 0,
+          'pdfCount': pdfCount,
+        });
       }
 
       if (mounted) {
@@ -97,7 +100,7 @@ class _DashboardTabState extends State<DashboardTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 🏆 TARJETA DE RACHA (Compactada)
+              // 🏆 TARJETA DE RACHA
               BlocBuilder<DashboardBloc, DashboardState>(
                 builder: (context, state) {
                   if (state is DashboardLoading) {
@@ -113,7 +116,6 @@ class _DashboardTabState extends State<DashboardTab> {
 
                   if (state is DashboardLoaded) {
                     final bool studiedToday = state.questionsAnswered > 0;
-
                     return Card(
                       color: const Color(0xff1e293b),
                       shape: RoundedRectangleBorder(
@@ -234,7 +236,7 @@ class _DashboardTabState extends State<DashboardTab> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Ve a la pestaña "Gestión" para activar una asignatura y cargar tu material.',
+                              'Ve a la pestaña "Gestión" para crear tu primera asignatura.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.grey[500],
@@ -253,7 +255,7 @@ class _DashboardTabState extends State<DashboardTab> {
 
               const SizedBox(height: 20),
 
-              // 🚀 Botones de acción rápida (Compactados)
+              // 🚀 Botón de estudiar voluntariamente (único botón del dashboard)
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppConstants.primaryColor,
@@ -279,43 +281,6 @@ class _DashboardTabState extends State<DashboardTab> {
                   ),
                 ),
               ),
-
-              const SizedBox(height: 12),
-
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  side: const BorderSide(
-                    color: AppConstants.primaryColor,
-                    width: 2,
-                  ),
-                ),
-                onPressed: () async {
-                  await _loadDashboardData();
-                  if (!mounted) return;
-
-                  Navigator.of(context).pushNamed(
-                    AppConstants.routePdfUpload,
-                    arguments: _activeSubjectsData,
-                  );
-                },
-                icon: const Icon(
-                  Icons.picture_as_pdf_rounded,
-                  color: AppConstants.textPrimary,
-                  size: 20,
-                ),
-                label: const Text(
-                  'Cargar Material PDF',
-                  style: TextStyle(
-                    color: AppConstants.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -323,7 +288,6 @@ class _DashboardTabState extends State<DashboardTab> {
     );
   }
 
-  /// Construye una tarjeta individual para el mural de asignaturas
   Widget _buildMuralCard(Map<String, dynamic> data) {
     final String name = data['name'] ?? 'Sin nombre';
     final String dateStr = _formatDate(data['exam_date']);
@@ -344,7 +308,6 @@ class _DashboardTabState extends State<DashboardTab> {
         padding: const EdgeInsets.all(14.0),
         child: Row(
           children: [
-            // Icono decorativo lateral
             Container(
               width: 4,
               height: 48,
@@ -358,7 +321,6 @@ class _DashboardTabState extends State<DashboardTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Nombre de la asignatura
                   Text(
                     name,
                     style: const TextStyle(
@@ -370,7 +332,6 @@ class _DashboardTabState extends State<DashboardTab> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
-                  // Fecha del examen
                   Row(
                     children: [
                       Icon(
@@ -386,7 +347,6 @@ class _DashboardTabState extends State<DashboardTab> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Estado del PDF
                   Row(
                     children: [
                       Icon(
@@ -398,9 +358,7 @@ class _DashboardTabState extends State<DashboardTab> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        hasPdf
-                            ? 'Material PDF cargado y listo'
-                            : 'Falta cargar el material PDF',
+                        hasPdf ? 'Material PDF cargado' : 'Falta cargar el PDF',
                         style: TextStyle(
                           color: hasPdf
                               ? Colors.green[300]

@@ -168,7 +168,7 @@ class _PdfUploadViewState extends State<PdfUploadView> {
                     children: [
                       // 1. SELECTOR DE ASIGNATURA
                       DropdownButtonFormField<String>(
-                        value: _selectedSubjectId,
+                        initialValue: _selectedSubjectId,
                         decoration: const InputDecoration(
                           labelText: 'Asignatura Activa',
                           prefixIcon: Icon(

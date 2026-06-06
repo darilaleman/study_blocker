@@ -1,4 +1,7 @@
-/lib
+Folder PATH listing for volume New Volume
+Volume serial number is 00000016 FC04:7012
+D:.
+|   arbol.txt
 |   injection_container.dart
 |   main.dart
 |   
@@ -60,6 +63,7 @@
 |           generate_quiz_with_ai.dart
 |           get_random_question.dart
 |           get_user_study_streak.dart
+|           parse_questions_from_pdf.dart
 |           
 \---presentation
     |   main_screen.dart
@@ -114,13 +118,19 @@
     |   |   |   pdf_upload_event.dart
     |   |   |   pdf_upload_state.dart
     |   |   |   
-    |   |   \---app_selection
-    |   |           app_selection_bloc.dart
-    |   |           app_selection_event.dart
-    |   |           app_selection_state.dart
+    |   |   +---app_selection
+    |   |   |       app_selection_bloc.dart
+    |   |   |       app_selection_event.dart
+    |   |   |       app_selection_state.dart
+    |   |   |       
+    |   |   \---study_goal
+    |   |           study_goal_bloc.dart
+    |   |           study_goal_event.dart
+    |   |           study_goal_state.dart
     |   |           
     |   \---pages
     |           app_selection_screen.dart
+    |           create_study_goal_screen.dart
     |           manage_subjects_tab.dart
     |           pdf_upload_screen.dart
     |           study_material_screen.dart

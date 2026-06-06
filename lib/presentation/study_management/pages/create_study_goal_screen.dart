@@ -114,7 +114,7 @@ class _CreateStudyGoalViewState extends State<CreateStudyGoalView> {
                 backgroundColor: Colors.green,
               ),
             );
-            Navigator.of(context).pop(); // Volver al Dashboard
+            Navigator.of(context).pop();
           }
         },
         builder: (context, state) {
@@ -131,356 +131,346 @@ class _CreateStudyGoalViewState extends State<CreateStudyGoalView> {
             children: [
               SingleChildScrollView(
                 padding: const EdgeInsets.all(20.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // PASO 1: ASIGNATURA Y FECHA
-                      _buildSectionHeader('1. ¿Qué vas a estudiar?'),
-                      const SizedBox(height: 12),
-
-                      Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // FORMULARIO PRINCIPAL
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Text('Usar existente'),
-                              selected: !_isNewSubject,
-                              onSelected: (val) =>
-                                  setState(() => _isNewSubject = false),
-                              selectedColor: AppConstants.primaryColor,
-                              labelStyle: TextStyle(
-                                color: !_isNewSubject
-                                    ? Colors.white
-                                    : Colors.white70,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Text('Crear nueva'),
-                              selected: _isNewSubject,
-                              onSelected: (val) =>
-                                  setState(() => _isNewSubject = true),
-                              selectedColor: AppConstants.primaryColor,
-                              labelStyle: TextStyle(
-                                color: _isNewSubject
-                                    ? Colors.white
-                                    : Colors.white70,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      if (_isNewSubject)
-                        TextFormField(
-                          controller: _newSubjectController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Nombre de la nueva asignatura',
-                            prefixIcon: Icon(
-                              Icons.add_circle_outline,
-                              color: Colors.white54,
-                            ),
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (val) => context.read<StudyGoalBloc>().add(
-                            CreateNewSubject(val),
-                          ),
-                          validator: (val) =>
-                              (val == null || val.trim().isEmpty)
-                              ? 'Ingresa un nombre'
-                              : null,
-                        )
-                      else
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
-                            labelText: 'Selecciona una asignatura',
-                            prefixIcon: Icon(
-                              Icons.book_rounded,
-                              color: Colors.white54,
-                            ),
-                            border: OutlineInputBorder(),
-                          ),
-                          dropdownColor: const Color(0xff1e293b),
-                          style: const TextStyle(color: Colors.white),
-                          items: state.existingSubjects.map((s) {
-                            return DropdownMenuItem<String>(
-                              value: s['id'].toString(),
-                              child: Text(s['name']),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              final name = state.existingSubjects.firstWhere(
-                                (s) => s['id'].toString() == val,
-                              )['name'];
-                              context.read<StudyGoalBloc>().add(
-                                SelectSubject(val, name),
-                              );
-                            }
-                          },
-                          validator: (val) => _isNewSubject
-                              ? null
-                              : (val == null
-                                    ? 'Selecciona una asignatura'
-                                    : null),
-                        ),
-
-                      const SizedBox(height: 16),
-
-                      InkWell(
-                        onTap: () => _pickExamDate(context, state.examDate),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Row(
+                          _buildSectionHeader('1. ¿Qué vas a estudiar?'),
+                          const SizedBox(height: 12),
+                          Row(
                             children: [
-                              const Icon(
-                                Icons.calendar_month_rounded,
-                                color: Colors.white54,
-                                size: 22,
+                              Expanded(
+                                child: ChoiceChip(
+                                  label: const Text('Usar existente'),
+                                  selected: !_isNewSubject,
+                                  onSelected: (val) =>
+                                      setState(() => _isNewSubject = false),
+                                  selectedColor: AppConstants.primaryColor,
+                                  labelStyle: TextStyle(
+                                    color: !_isNewSubject
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
-                                  state.examDate == null
-                                      ? 'Fecha de examen (Opcional)'
-                                      : 'Examen: ${state.examDate!.day}/${state.examDate!.month}/${state.examDate!.year}',
-                                  style: TextStyle(
-                                    color: state.examDate == null
-                                        ? Colors.white54
-                                        : Colors.white,
-                                    fontSize: 15,
+                                child: ChoiceChip(
+                                  label: const Text('Crear nueva'),
+                                  selected: _isNewSubject,
+                                  onSelected: (val) =>
+                                      setState(() => _isNewSubject = true),
+                                  selectedColor: AppConstants.primaryColor,
+                                  labelStyle: TextStyle(
+                                    color: _isNewSubject
+                                        ? Colors.white
+                                        : Colors.white70,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // PASO 2: MATERIAL PDF
-                      _buildSectionHeader('2. Sube tu material'),
-                      const SizedBox(height: 12),
-
-                      InkWell(
-                        onTap: () => _pickPdfFile(context),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 20,
-                            horizontal: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: state.pdfFileName != null
-                                ? theme.colorScheme.primary.withValues(
-                                    alpha: 0.1,
-                                  )
-                                : const Color(0xff1e293b),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: state.pdfFileName != null
-                                  ? theme.colorScheme.primary
-                                  : Colors.white38,
-                              width: state.pdfFileName != null ? 2 : 1.5,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                state.pdfFileName != null
-                                    ? Icons.picture_as_pdf_rounded
-                                    : Icons.cloud_upload_rounded,
-                                size: 32,
-                                color: state.pdfFileName != null
-                                    ? theme.colorScheme.primary
-                                    : Colors.white70,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      state.pdfFileName ??
-                                          'Toca para buscar un PDF',
-                                      style: TextStyle(
-                                        color: state.pdfFileName != null
-                                            ? theme.colorScheme.primary
-                                            : Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-                                    if (state.pdfFileName == null) ...[
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        'Máximo 10 MB',
-                                        style: TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ] else ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${state.pdfPageCount} páginas • ${state.pdfFileName}',
-                                        style: const TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 12,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ],
+                          const SizedBox(height: 12),
+                          if (_isNewSubject)
+                            TextFormField(
+                              controller: _newSubjectController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'Nombre de la nueva asignatura',
+                                prefixIcon: Icon(
+                                  Icons.add_circle_outline,
+                                  color: Colors.white54,
                                 ),
+                                border: OutlineInputBorder(),
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // PASO 3: APPS A BLOQUEAR
-                      _buildSectionHeader('3. Bloquea tus distracciones'),
-                      const SizedBox(height: 12),
-
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xff1e293b),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Selecciona las apps que se bloquearán:',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
+                              onChanged: (val) => context
+                                  .read<StudyGoalBloc>()
+                                  .add(CreateNewSubject(val)),
+                              validator: (val) =>
+                                  (val == null || val.trim().isEmpty)
+                                  ? 'Ingresa un nombre'
+                                  : null,
+                            )
+                          else
+                            DropdownButtonFormField<String>(
+                              decoration: const InputDecoration(
+                                labelText: 'Selecciona una asignatura',
+                                prefixIcon: Icon(
+                                  Icons.book_rounded,
+                                  color: Colors.white54,
+                                ),
+                                border: OutlineInputBorder(),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height:
-                                  180, // Altura fija con scroll interno para no alargar la pantalla
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: state.installedApps.length,
-                                itemBuilder: (context, index) {
-                                  final app = state.installedApps[index];
-                                  final isBlocked = state.blockedAppPackages
-                                      .contains(app.packageName);
-                                  return CheckboxListTile(
-                                    title: Text(
-                                      app.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    secondary: app.icon != null
-                                        ? Image.memory(
-                                            app.icon!,
-                                            width: 24,
-                                            height: 24,
-                                          )
-                                        : const Icon(
-                                            Icons.android,
-                                            color: Colors.white54,
-                                            size: 24,
-                                          ),
-                                    value: isBlocked,
-                                    onChanged: (val) {
-                                      context.read<StudyGoalBloc>().add(
-                                        ToggleAppBlock(app.packageName),
-                                      );
-                                    },
-                                    activeColor: Colors.blueAccent,
-                                    checkColor: Colors.white,
-                                    contentPadding: EdgeInsets.zero,
-                                    dense: true,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // BOTÓN FINAL DE ACCIÓN
-                      ElevatedButton(
-                        onPressed: state.status == StudyGoalStatus.loading
-                            ? null
-                            : () {
-                                if (_formKey.currentState!.validate()) {
+                              dropdownColor: const Color(0xff1e293b),
+                              style: const TextStyle(color: Colors.white),
+                              items: state.existingSubjects.map((s) {
+                                return DropdownMenuItem<String>(
+                                  value: s['id'].toString(),
+                                  child: Text(s['name']),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  final name = state.existingSubjects
+                                      .firstWhere(
+                                        (s) => s['id'].toString() == val,
+                                      )['name'];
                                   context.read<StudyGoalBloc>().add(
-                                    SaveStudyGoal(),
+                                    SelectSubject(val, name),
                                   );
                                 }
                               },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: state.isFormValid
-                              ? AppConstants.primaryColor
-                              : const Color(0xff334155),
-                          disabledBackgroundColor: const Color(0xff334155),
-                          shape: RoundedRectangleBorder(
+                              validator: (val) => _isNewSubject
+                                  ? null
+                                  : (val == null
+                                        ? 'Selecciona una asignatura'
+                                        : null),
+                            ),
+                          const SizedBox(height: 16),
+                          InkWell(
+                            onTap: () => _pickExamDate(context, state.examDate),
                             borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: state.status == StudyGoalStatus.loading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                '🚀 ¡Empezar a estudiar!',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.white,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E8F0),
                                 ),
                               ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_month_rounded,
+                                    color: Colors.white54,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      state.examDate == null
+                                          ? 'Fecha de examen (Opcional)'
+                                          : 'Examen: ${state.examDate!.day}/${state.examDate!.month}/${state.examDate!.year}',
+                                      style: TextStyle(
+                                        color: state.examDate == null
+                                            ? Colors.white54
+                                            : Colors.white,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildSectionHeader('2. Sube tu material'),
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: () => _pickPdfFile(context),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 20,
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: state.pdfFileName != null
+                                    ? theme.colorScheme.primary.withValues(
+                                        alpha: 0.1,
+                                      )
+                                    : const Color(0xff1e293b),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: state.pdfFileName != null
+                                      ? theme.colorScheme.primary
+                                      : Colors.white38,
+                                  width: state.pdfFileName != null ? 2 : 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    state.pdfFileName != null
+                                        ? Icons.picture_as_pdf_rounded
+                                        : Icons.cloud_upload_rounded,
+                                    size: 32,
+                                    color: state.pdfFileName != null
+                                        ? theme.colorScheme.primary
+                                        : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          state.pdfFileName ??
+                                              'Toca para buscar un PDF',
+                                          style: TextStyle(
+                                            color: state.pdfFileName != null
+                                                ? theme.colorScheme.primary
+                                                : Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        if (state.pdfFileName == null) ...[
+                                          const SizedBox(height: 4),
+                                          const Text(
+                                            'Máximo 10 MB',
+                                            style: TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${state.pdfPageCount} páginas • ${state.pdfFileName}',
+                                            style: const TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 12,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
 
-                      if (!state.isFormValid &&
-                          state.status != StudyGoalStatus.loading) ...[
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Completa la asignatura y sube un PDF para habilitar el botón.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54, fontSize: 12),
+                    const SizedBox(height: 32),
+
+                    // SECCIÓN DE APPS BLOQUEADAS (SEPARADA DEL FORMULARIO)
+                    _buildSectionHeader('3. Apps a bloquear (Global)'),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Estas apps se bloquearán para todas las asignaturas',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff1e293b),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: SizedBox(
+                        height: 200,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: state.installedApps.length,
+                          itemBuilder: (context, index) {
+                            final app = state.installedApps[index];
+                            final isBlocked = state.blockedAppPackages.contains(
+                              app.packageName,
+                            );
+                            return CheckboxListTile(
+                              title: Text(
+                                app.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              secondary: app.icon != null
+                                  ? Image.memory(
+                                      app.icon!,
+                                      width: 24,
+                                      height: 24,
+                                    )
+                                  : const Icon(
+                                      Icons.android,
+                                      color: Colors.white54,
+                                      size: 24,
+                                    ),
+                              value: isBlocked,
+                              onChanged: (val) {
+                                context.read<StudyGoalBloc>().add(
+                                  ToggleAppBlock(app.packageName),
+                                );
+                              },
+                              activeColor: Colors.blueAccent,
+                              checkColor: Colors.white,
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                            );
+                          },
                         ),
-                      ],
+                      ),
+                    ),
 
-                      const SizedBox(height: 20),
+                    const SizedBox(height: 32),
+
+                    // BOTÓN FINAL DE ACCIÓN
+                    ElevatedButton(
+                      onPressed: state.status == StudyGoalStatus.loading
+                          ? null
+                          : () {
+                              if (_formKey.currentState!.validate()) {
+                                context.read<StudyGoalBloc>().add(
+                                  SaveStudyGoal(),
+                                );
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: state.isFormValid
+                            ? AppConstants.primaryColor
+                            : const Color(0xff334155),
+                        disabledBackgroundColor: const Color(0xff334155),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: state.status == StudyGoalStatus.loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              '🚀 ¡Empezar a estudiar!',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
+                    if (!state.isFormValid &&
+                        state.status != StudyGoalStatus.loading) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Completa la asignatura y sube un PDF para habilitar el botón.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
                     ],
-                  ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
               ),
               if (state.status == StudyGoalStatus.loading)

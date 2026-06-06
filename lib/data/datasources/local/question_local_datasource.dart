@@ -38,8 +38,6 @@ abstract class QuestionLocalDataSource {
   });
   Future<void> saveBlockedApps(int subjectId, List<String> packageNames);
   Future<List<String>> getBlockedAppsForSubject(int subjectId);
-
-  // ✅ NUEVO MÉTODO
   Future<void> deactivateExpiredSubjects();
 }
 
@@ -177,8 +175,9 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
       final firstLogDate = result.first['study_date'] as String;
 
       if (firstLogDate != todayStr && firstLogDate != yesterdayStr) return 0;
-      if (firstLogDate == yesterdayStr)
+      if (firstLogDate == yesterdayStr) {
         expectedDate = expectedDate.subtract(const Duration(days: 1));
+      }
 
       for (final row in result) {
         final logDateStr = row['study_date'] as String;
@@ -386,7 +385,6 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     }
   }
 
-  // ✅ NUEVO MÉTODO: Limpia asignaturas cuya fecha de examen ya pasó
   @override
   Future<void> deactivateExpiredSubjects() async {
     try {

@@ -35,13 +35,11 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
     try {
       final isVip = await localConfig.isVipUser();
       final subjects = await questionLocalDataSource.getAllSubjects();
-
       final allApps = await InstalledApps.getInstalledApps(
         excludeSystemApps: true,
         withIcon: true,
       );
 
-      // ✅ FILTRO INFALIBLE APLICADO AQUÍ
       final safeApps = allApps.where(_isAppSafeToBlock).toList();
 
       emit(
@@ -66,17 +64,13 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
     final lowerName = app.name.toLowerCase().replaceAll('_', ' ').trim();
     final lowerPackage = app.packageName.toLowerCase();
 
-    // 1. Bloqueo explícito de la propia app (cubriendo todas las variaciones)
     if (lowerPackage.contains('study_blocker') ||
         lowerPackage.contains('dopamind') ||
         lowerName.contains('study blocker') ||
-        lowerName.contains('dopamind') ||
-        lowerName == 'studyblocker' ||
-        lowerPackage == 'com.example.study_blocker') {
+        lowerName.contains('dopamind')) {
       return false;
     }
 
-    // 2. Apps críticas del sistema operativo
     const criticalPrefixes = [
       'com.android.settings',
       'com.android.systemui',
@@ -180,9 +174,7 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
       );
       return;
     }
-
     emit(state.copyWith(status: StudyGoalStatus.loading));
-
     try {
       if (!state.isVip) {
         final activeCount = await questionLocalDataSource.countActiveSubjects();
@@ -196,7 +188,6 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
           );
           return;
         }
-
         if (state.selectedSubjectId != null) {
           final pdfCount = await questionLocalDataSource.countPdfsForSubject(
             state.selectedSubjectName!,
@@ -214,7 +205,6 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
         }
       }
 
-      // 1. Guardar/Actualizar Asignatura y PDF
       await questionLocalDataSource.saveSubjectAndPdf(
         subjectName: state.selectedSubjectName!,
         examDate: state.examDate!,
@@ -222,7 +212,6 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
         pageCount: state.pdfPageCount!,
       );
 
-      // 2. Obtener el ID de la asignatura recién guardada
       final subjects = await questionLocalDataSource.getAllSubjects();
       final targetSubject = subjects.firstWhere(
         (s) => s['name'] == state.selectedSubjectName,
@@ -230,11 +219,13 @@ class StudyGoalBloc extends Bloc<StudyGoalEvent, StudyGoalState> {
       );
       final subjectId = targetSubject['id'] as int;
 
-      // 3. Guardar apps bloqueadas
-      await questionLocalDataSource.saveBlockedApps(
-        subjectId,
-        state.blockedAppPackages.toList(),
-      );
+      // Guardar apps bloqueadas de forma global (para todas las asignaturas)
+      if (state.blockedAppPackages.isNotEmpty) {
+        await questionLocalDataSource.saveBlockedApps(
+          subjectId,
+          state.blockedAppPackages.toList(),
+        );
+      }
 
       emit(state.copyWith(status: StudyGoalStatus.success));
     } catch (e) {
