@@ -38,6 +38,8 @@ abstract class QuestionLocalDataSource {
   });
   Future<void> saveBlockedApps(int subjectId, List<String> packageNames);
   Future<List<String>> getBlockedAppsForSubject(int subjectId);
+
+  // ✅ NUEVO MÉTODO
   Future<void> deactivateExpiredSubjects();
 }
 
@@ -385,6 +387,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
     }
   }
 
+  // ✅ NUEVO MÉTODO: Limpia asignaturas cuya fecha de examen ya pasó
   @override
   Future<void> deactivateExpiredSubjects() async {
     try {
@@ -406,7 +409,7 @@ class QuestionLocalDataSourceImpl implements QuestionLocalDataSource {
         WHERE subject_id IN (
           SELECT id FROM table_subjects WHERE exam_date <= ?
         )
-      ''',
+        ''',
         [nowStr],
       );
     } catch (e) {
