@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:study_blocker/core/constants/app_constants.dart';
 import 'package:study_blocker/presentation/dashboard/pages/dashboard_tab.dart';
-import 'package:study_blocker/presentation/study_management/pages/manage_subjects_tab.dart';
 import 'package:study_blocker/presentation/dashboard/pages/stats_tab.dart';
 import 'package:study_blocker/presentation/settings/pages/settings_tab.dart';
+import 'package:study_blocker/presentation/study_management/pages/study_material_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});

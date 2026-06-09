@@ -20,18 +20,33 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
   List<Map<String, dynamic>> _allSubjects = [];
   List<AppInfo> _installedApps = [];
   bool _isLoading = true;
-  bool _isVip =
-      false; // Puedes conectar esto a tu AppConfigLocalDataSource si lo tienes
 
-  // Estado del Formulario Unificado
-  String? _selectedSubjectId;
-  final TextEditingController _newSubjectController = TextEditingController();
-  bool _isCreatingNew = false;
+  // ✅ VARIABLES DEL FORMULARIO MOVIDAS AL ESTADO DE LA CLASE
+  final TextEditingController _nameController = TextEditingController();
   DateTime? _selectedDate;
   String? _pdfPath;
   String? _pdfName;
-  int? _pdfPages;
-  final Set<String> _selectedApps = {};
+  int? _pdfPageCount;
+
+  // ✅ NO FINAL para permitir modificación
+  Set<String> _globalBlockedApps = {};
+
+  // Lista negra de apps críticas
+  static const List<String> _criticalAppPrefixes = [
+    'com.android.settings',
+    'com.android.systemui',
+    'com.google.android.gms',
+    'com.google.android.gsf',
+    'com.android.phone',
+    'com.android.dialer',
+    'com.google.android.dialer',
+    'com.android.incallui',
+    'com.google.android.packageinstaller',
+    'com.sec.android',
+    'com.miui',
+    'com.huawei',
+    'com.google.android.googlequicksearchbox',
+  ];
 
   @override
   void initState() {
@@ -41,8 +56,15 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
 
   @override
   void dispose() {
-    _newSubjectController.dispose();
+    _nameController.dispose();
     super.dispose();
+  }
+
+  // ✅ GETTER PARA VALIDACIÓN EN TIEMPO REAL
+  bool get _isFormValid {
+    return _nameController.text.trim().isNotEmpty &&
+        _selectedDate != null &&
+        _pdfPath != null;
   }
 
   Future<void> _loadInitialData() async {
@@ -58,21 +80,28 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
       final safeApps = apps.where((app) {
         final lowerName = app.name.toLowerCase().replaceAll('_', ' ').trim();
         final lowerPackage = app.packageName.toLowerCase();
+
         if (lowerPackage.contains('study_blocker') ||
-            lowerName.contains('study blocker'))
+            lowerPackage.contains('dopamind') ||
+            lowerName.contains('study blocker') ||
+            lowerName.contains('dopamind')) {
           return false;
-        const critical = [
-          'com.android.settings',
-          'com.android.systemui',
-          'com.google.android.gms',
-        ];
-        return !critical.any((p) => lowerPackage.startsWith(p));
+        }
+
+        for (final prefix in _criticalAppPrefixes) {
+          if (lowerPackage.startsWith(prefix)) return false;
+        }
+        return true;
       }).toList();
+
+      // Cargar apps bloqueadas globales (subject_id = 0)
+      final globalBlocked = await _datasource.getBlockedAppsForSubject(0);
 
       if (mounted) {
         setState(() {
           _allSubjects = subjects;
           _installedApps = safeApps;
+          _globalBlockedApps = globalBlocked.toSet();
           _isLoading = false;
         });
       }
@@ -81,37 +110,17 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
     }
   }
 
-  Future<void> _toggleSubjectActive(int id, bool isActive) async {
-    if (isActive && !_isVip) {
-      final count = await _datasource.countActiveSubjects();
-      if (count >= 2) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Máximo 2 asignaturas activas en versión gratuita"),
-            ),
-          );
-        }
-        return;
-      }
-    }
-    await _datasource.updateSubjectActive(id, isActive);
-    _loadInitialData();
-  }
-
-  Future<void> _deleteSubject(int id) async {
-    await _datasource.deleteSubject(id);
-    _loadInitialData();
-  }
-
   Future<void> _pickDate() async {
+    final now = DateTime.now();
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 7)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: now.add(const Duration(days: 7)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
     );
-    if (date != null) setState(() => _selectedDate = date);
+    if (date != null && mounted) {
+      setState(() => _selectedDate = date);
+    }
   }
 
   Future<void> _pickPdf() async {
@@ -119,105 +128,103 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
       type: FileType.custom,
       allowedExtensions: ['pdf'],
     );
-    if (result != null) {
+
+    if (result != null && mounted) {
       final file = result.files.first;
+
+      // Validar tamaño máximo 10MB
       if (file.size > 10 * 1024 * 1024) {
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text("Máximo 10MB")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('El archivo supera el límite de 10MB')),
+        );
         return;
       }
-      int pages = 0;
+
+      // Contar páginas
+      int pageCount = 0;
       if (file.path != null) {
         try {
-          pages = (await PDFDoc.fromPath(file.path!)).length;
+          final pdfDoc = await PDFDoc.fromPath(file.path!);
+          pageCount = pdfDoc.length;
         } catch (_) {}
       }
-      if (!_isVip && pages > 10) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Máximo 10 páginas en versión gratuita"),
-            ),
-          );
+
+      // Validar máximo 10 páginas para usuarios free
+      if (pageCount > 10) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Máximo 10 páginas en versión gratuita'),
+          ),
+        );
         return;
       }
+
       setState(() {
         _pdfPath = file.path;
         _pdfName = file.name;
-        _pdfPages = pages;
+        _pdfPageCount = pageCount;
       });
     }
   }
 
-  Future<void> _saveConfiguration() async {
-    final subjectName = _isCreatingNew
-        ? _newSubjectController.text.trim()
-        : (_allSubjects.firstWhere(
-                (s) => s['id'] == _selectedSubjectId,
-                orElse: () => {},
-              )['name'] ??
-              '');
+  Future<void> _processGoal(bool useAI) async {
+    if (!_isFormValid) return;
 
-    if (subjectName.isEmpty) {
+    final subjectName = _nameController.text.trim();
+
+    // Validar límite de 2 asignaturas activas
+    final activeCount = await _datasource.countActiveSubjects();
+    if (activeCount >= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Selecciona o crea una asignatura")),
-      );
-      return;
-    }
-    if (_selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Selecciona una fecha de examen")),
-      );
-      return;
-    }
-    if (_pdfPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Selecciona un archivo PDF")),
+        const SnackBar(
+          content: Text('Máximo 2 asignaturas activas en versión gratuita'),
+        ),
       );
       return;
     }
 
     try {
-      // 1. Guardar Asignatura y PDF
+      // Guardar asignatura y PDF
       await _datasource.saveSubjectAndPdf(
         subjectName: subjectName,
         examDate: _selectedDate!,
         filePath: _pdfPath!,
-        pageCount: _pdfPages ?? 0,
+        pageCount: _pdfPageCount ?? 0,
       );
 
-      // 2. Obtener ID y Guardar Apps Bloqueadas
-      final subjects = await _datasource.getAllSubjects();
-      final target = subjects.firstWhere((s) => s['name'] == subjectName);
-      await _datasource.saveBlockedApps(target['id'], _selectedApps.toList());
+      // Guardar apps bloqueadas globales (subject_id = 0)
+      await _datasource.saveBlockedApps(0, _globalBlockedApps.toList());
 
       if (mounted) {
+        String msg = useAI
+            ? 'Objetivo creado. Procesando con IA...'
+            : '¡Objetivo de estudio creado exitosamente!';
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Configuración guardada exitosamente")),
+          SnackBar(content: Text(msg), backgroundColor: Colors.green),
         );
+
+        // Si usamos IA, aquí iría la lógica adicional de llamada a la API
+        // Por ahora, solo limpiamos y recargamos
         _clearForm();
         _loadInitialData();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+      }
     }
   }
 
   void _clearForm() {
     setState(() {
-      _selectedSubjectId = null;
-      _newSubjectController.clear();
-      _isCreatingNew = false;
+      _nameController.clear();
       _selectedDate = null;
       _pdfPath = null;
       _pdfName = null;
-      _pdfPages = null;
-      _selectedApps.clear();
+      _pdfPageCount = null;
     });
   }
 
@@ -226,221 +233,406 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
     return Scaffold(
       backgroundColor: const Color(0xff0f172a),
       appBar: AppBar(
-        title: const Text("Gestión", style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Gestión',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: const Color(0xff1e293b),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppConstants.primaryColor,
+              ),
+            )
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              children: [
-                // SECCIÓN 1: LISTA DE ASIGNATURAS
-                const Text(
-                  "Mis Asignaturas",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Sección: Asignaturas existentes
+                  const Text(
+                    'Mis Asignaturas',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                ..._allSubjects.map(
-                  (s) => Card(
-                    color: const Color(0xff1e293b),
-                    child: ListTile(
-                      title: Text(
-                        s['name'],
-                        style: const TextStyle(color: Colors.white),
+                  const SizedBox(height: 12),
+                  if (_allSubjects.isEmpty)
+                    const Card(
+                      color: Color(0xff1e293b),
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'No tienes asignaturas aún. Crea la primera abajo.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    )
+                  else
+                    ..._allSubjects.map((s) => _buildSubjectCard(s)),
+
+                  const SizedBox(height: 24),
+                  const Divider(color: Colors.white24),
+                  const SizedBox(height: 16),
+
+                  // Sección: Formulario unificado
+                  const Text(
+                    'Crear Nuevo Objetivo',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Campo: Nombre de asignatura
+                  TextField(
+                    controller: _nameController,
+                    style: const TextStyle(color: Colors.white),
+                    // ✅ onChanged llama a setState para actualizar el botón
+                    onChanged: (val) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre de la asignatura',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      hintText: 'Ej: Matemáticas',
+                      hintStyle: TextStyle(color: Colors.white38),
+                      prefixIcon: Icon(
+                        Icons.book_rounded,
+                        color: Colors.white54,
+                      ),
+                      border: OutlineInputBorder(),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white24),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Campo: Fecha de examen
+                  InkWell(
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
                         children: [
-                          Switch(
-                            value: s['is_active'] == 1,
-                            onChanged: (val) =>
-                                _toggleSubjectActive(s['id'], val),
+                          const Icon(
+                            Icons.calendar_month_rounded,
+                            color: Colors.white54,
+                            size: 22,
                           ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete,
-                              color: Colors.redAccent,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _selectedDate == null
+                                  ? 'Fecha del examen'
+                                  : '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}',
+                              style: TextStyle(
+                                color: _selectedDate == null
+                                    ? Colors.white54
+                                    : Colors.white,
+                                fontSize: 15,
+                              ),
                             ),
-                            onPressed: () => _deleteSubject(s['id']),
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                const Divider(color: Colors.white24),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 16),
 
-                // SECCIÓN 2: FORMULARIO UNIFICADO
-                const Text(
-                  "Configurar Material y Bloqueo",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Selector de Asignatura
-                Row(
-                  children: [
-                    Expanded(
-                      child: Checkbox(
-                        value: _isCreatingNew,
-                        onChanged: (val) =>
-                            setState(() => _isCreatingNew = val ?? false),
+                  // Campo: PDF
+                  InkWell(
+                    onTap: _pickPdf,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 20,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _pdfPath != null
+                            ? AppConstants.primaryColor.withValues(alpha: 0.1)
+                            : const Color(0xff1e293b),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _pdfPath != null
+                              ? AppConstants.primaryColor
+                              : Colors.white38,
+                          width: _pdfPath != null ? 2 : 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _pdfPath != null
+                                ? Icons.picture_as_pdf_rounded
+                                : Icons.cloud_upload_rounded,
+                            size: 32,
+                            color: _pdfPath != null
+                                ? AppConstants.primaryColor
+                                : Colors.white70,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _pdfName ?? 'Toca para buscar un PDF',
+                                  style: TextStyle(
+                                    color: _pdfPath != null
+                                        ? AppConstants.primaryColor
+                                        : Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                if (_pdfPath == null) ...[
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Máximo 10 MB • Máximo 10 páginas',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ] else ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '$_pdfPageCount páginas • $_pdfName',
+                                    style: const TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const Text(
-                      "Crear nueva asignatura",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-                if (_isCreatingNew)
-                  TextField(
-                    controller: _newSubjectController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre',
-                      labelStyle: TextStyle(color: Colors.white54),
-                    ),
-                  )
-                else
-                  DropdownButtonFormField<String>(
-                    value: _selectedSubjectId?.toString(),
-                    items: _allSubjects
-                        .where((s) => s['is_active'] == 1)
-                        .map(
-                          (s) => DropdownMenuItem(
-                            value: s['id'].toString(),
-                            child: Text(s['name']),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (val) => setState(
-                      () => _selectedSubjectId =
-                          int.tryParse(val ?? '') as String?,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Asignatura Activa',
-                      labelStyle: TextStyle(color: Colors.white54),
-                    ),
                   ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 24),
 
-                // Fecha
-                InkWell(
-                  onTap: _pickDate,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff1e293b),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today, color: Colors.white54),
-                        const SizedBox(width: 12),
-                        Text(
-                          _selectedDate == null
-                              ? 'Fecha de examen'
-                              : '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}',
-                          style: TextStyle(
-                            color: _selectedDate == null
-                                ? Colors.white54
-                                : Colors.white,
+                  // Botones de Acción
+                  Row(
+                    children: [
+                      // Botón 1: Procesar (Free)
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isFormValid
+                              ? () => _processGoal(false)
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppConstants.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // PDF
-                InkWell(
-                  onTap: _pickPdf,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff1e293b),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.picture_as_pdf, color: Colors.white54),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _pdfName ?? 'Seleccionar PDF',
+                          icon: const Icon(
+                            Icons.text_snippet_rounded,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Procesar',
                             style: TextStyle(
-                              color: _pdfName == null
-                                  ? Colors.white54
-                                  : Colors.white,
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Apps
-                const Text(
-                  "Apps a bloquear:",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(
-                  height: 200,
-                  child: ListView(
-                    children: _installedApps
-                        .map(
-                          (app) => CheckboxListTile(
-                            title: Text(
-                              app.name,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            value: _selectedApps.contains(app.packageName),
-                            onChanged: (val) => setState(
-                              () => val == true
-                                  ? _selectedApps.add(app.packageName)
-                                  : _selectedApps.remove(app.packageName),
+                      ),
+                      const SizedBox(width: 12),
+                      // Botón 2: Procesar con IA (VIP)
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isFormValid
+                              ? () => _processGoal(true)
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppConstants.accentColor,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                        )
-                        .toList(),
+                          icon: const Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Procesar con IA',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 24),
 
-                // Botón Guardar
-                ElevatedButton(
-                  onPressed: _saveConfiguration,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppConstants.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text(
-                    "Guardar Configuración",
+                  const SizedBox(height: 24),
+                  const Divider(color: Colors.white24),
+                  const SizedBox(height: 16),
+
+                  // Sección: Apps bloqueadas (global)
+                  const Text(
+                    'Apps a Bloquear (Global)',
                     style: TextStyle(
                       color: Colors.white,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    'Estas apps se bloquearán para todas tus asignaturas',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: const Color(0xff1e293b),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: _installedApps.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No hay apps disponibles',
+                              style: TextStyle(color: Colors.white54),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: _installedApps.length,
+                            itemBuilder: (context, index) {
+                              final app = _installedApps[index];
+                              final isSelected = _globalBlockedApps.contains(
+                                app.packageName,
+                              );
+                              return CheckboxListTile(
+                                title: Text(
+                                  app.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                secondary: app.icon != null
+                                    ? Image.memory(
+                                        app.icon!,
+                                        width: 24,
+                                        height: 24,
+                                      )
+                                    : const Icon(
+                                        Icons.android,
+                                        color: Colors.white54,
+                                        size: 24,
+                                      ),
+                                value: isSelected,
+                                onChanged: (val) {
+                                  setState(() {
+                                    if (val == true) {
+                                      _globalBlockedApps.add(app.packageName);
+                                    } else {
+                                      _globalBlockedApps.remove(
+                                        app.packageName,
+                                      );
+                                    }
+                                  });
+                                },
+                                activeColor: AppConstants.primaryColor,
+                                checkColor: Colors.white,
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                              );
+                            },
+                          ),
+                  ),
+
+                  // Botón para guardar cambios de apps
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await _datasource.saveBlockedApps(
+                        0,
+                        _globalBlockedApps.toList(),
+                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Apps bloqueadas actualizadas'),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.save_rounded),
+                    label: const Text('Guardar Configuración de Apps'),
+                  ),
+
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
+    );
+  }
+
+  Widget _buildSubjectCard(Map<String, dynamic> subject) {
+    final name = subject['name'] as String;
+    final examDate = subject['exam_date'] as String?;
+    final isActive = subject['is_active'] == 1;
+
+    String dateText = 'Sin fecha';
+    if (examDate != null) {
+      try {
+        final date = DateTime.parse(examDate);
+        dateText = '${date.day}/${date.month}/${date.year}';
+      } catch (_) {}
+    }
+
+    return Card(
+      color: const Color(0xff1e293b),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(
+          isActive ? Icons.check_circle : Icons.schedule,
+          color: isActive ? Colors.green : Colors.orange,
+        ),
+        title: Text(
+          name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          'Examen: $dateText',
+          style: TextStyle(color: Colors.grey[400], fontSize: 13),
+        ),
+        // ✅ SIN BOTÓN DE ELIMINAR Y SIN TOGGLES
+      ),
     );
   }
 }

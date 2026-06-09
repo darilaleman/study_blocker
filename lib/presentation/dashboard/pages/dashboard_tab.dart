@@ -82,8 +82,9 @@ class _DashboardTabState extends State<DashboardTab> {
         color: AppConstants.primaryColor,
         onRefresh: () async {
           await _loadDashboardData();
-          if (mounted)
+          if (mounted) {
             context.read<DashboardBloc>().add(LoadDashboardMetrics());
+          }
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

@@ -652,7 +652,7 @@ class _ManageSubjectsTabState extends State<ManageSubjectsTab> {
                               value: s['is_active'] == 1,
                               onChanged: (val) =>
                                   _toggleSubjectActive(s['id'], val),
-                              activeColor: Colors.green,
+                              activeThumbColor: Colors.green,
                             ),
                             IconButton(
                               icon: const Icon(
